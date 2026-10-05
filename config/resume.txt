@@ -1,0 +1,112 @@
+Deepak Vaduganambi
+Backend Engineer (AI Developer) — Bengaluru / India
+linkedin.com/in/deepak-vaduganambi
+
+PROFESSIONAL SUMMARY
+Backend Engineer focused on Python services, AI/LLM infrastructure, distributed
+processing, observability, authorization, and production reliability. Since
+joining Oraczen in December 2024, has worked across shared AI platform
+components, data-enrichment workflows, multi-tenant service architecture, and
+performance/security fixes. Strongest in Python/FastAPI and in the seams
+between services, databases, workers, and AI providers.
+
+PROFESSIONAL EXPERIENCE
+
+Oraczen | Backend Engineer (AI Developer) — India — Dec 2024 - Present
+- Owned and contributed to shared backend infrastructure across observability,
+  authorization/RBAC, LLM routing, configuration, feedback, and
+  data-enrichment services.
+- Reworked Casbin permission resolution into an indexed lookup path,
+  delivering a measured 229x-965x speedup with byte-identical outputs across
+  7 role profiles; shipped accesszen 0.2.14 across 17 consumer services.
+- Reduced enrichment-worker boot memory from 709 MB to 427 MB (40%) by
+  removing eager heavyweight imports; validated that a 512 MB container cap
+  could not boot the worker safely.
+- Diagnosed a platform-gateway crash loop as CPU throttling and event-loop
+  blocking rather than memory exhaustion: bounded synchronous tool
+  initialization, removed heavy inline imports, traced repeated probe
+  failures to a 150m CPU limit and exit code 137.
+- Reduced a production enrichment step from 15m14s to 35s while improving
+  successful row completion from 9/10 to 10/10 by identifying model-output
+  headroom constraints and rerouting the workload to a model with 128k
+  output capacity.
+- Migrated shared observability infrastructure to Langfuse v3 and
+  OpenTelemetry, centralized LLM-call telemetry behind a facade, enforced
+  shared-library usage through CI/lint controls.
+- Drove per-service database separation with independent Alembic migration
+  chains, including a two-database design for the vision service.
+- Implemented and debugged security/reliability fixes spanning
+  budget-enforcement bypasses, caller-JWT forwarding, sensitive
+  semantic-cache logs, generic tool-resolution bypasses, static bearer-token
+  fallbacks, and cross-tenant authorization assertions.
+- Built measurement harnesses and operational guards for memory, dependency
+  drift, service probing, and false-signal diagnostics instead of relying
+  only on one-off production fixes.
+
+Earlier: Thought Process Systems LLP — Intern, React JS Developer, Bengaluru,
+Jun 2024 - Dec 2024. React components + Redux Toolkit for an LMS product,
+integrated with backend services.
+
+Earlier: Accurate Info Solution — Freelance Web Developer, Bengaluru,
+Sep 2023 - Nov 2023. WordPress site with custom features and SMTP integration.
+
+SELECTED SYSTEMS & PROJECT CONTRIBUTIONS
+- Observability Platform (observezen): Langfuse v3 SDK migration,
+  OpenTelemetry pipeline, Sentry/GlitchTip integration, analytics dashboards,
+  observability write-side facade used by platform LLM calls.
+- Authorization / RBAC (accesszen + Casbin): permission-resolution rewrite,
+  policy/CSV reconciliation, permission-catalog audit, org-vs-agent domain
+  scoping, startup-event-loop fixes, delta seeding under advisory lock.
+- LLM Router (llmrouterzen): budget enforcement, fallback-candidate bounding,
+  reasoning-model timeouts, model-catalog wiring, provider-key bridging,
+  per-org routing, removal of static-token fallbacks.
+- Data Enrichment Pipeline: worker memory optimization, run-lifecycle
+  correctness, per-stage tracing, live grid reload, cost attribution,
+  production-scale execution for 100k+ rows/run.
+- Multi-tenant Config / DB Architecture (configzen): per-service DB
+  separation with independent Alembic migration chains, two-database design
+  for the vision service.
+- Feedback Service (feedbackzen): chat-feedback routing, classifier domain
+  guards, prompt-proposal pipeline, review UI.
+- Spend Analyzer: NL-to-SQL correctness and observability — dialect handling,
+  IN-clause behavior, %-escaping, await fixes, per-stage tracing,
+  cache-bypass context variables, permissions.
+- Docker/Packaging modernization: converted ~11 services to isolated Poetry
+  virtualenv patterns, standardized /app layout, fixed a chown/copy-up issue
+  that could double image layers.
+
+TECHNICAL SKILLS
+Backend: Python 3.12, FastAPI, Pydantic v2, Poetry, Alembic, Celery, pytest
+Frontend: TypeScript, React 19, Next.js, Zod, Playwright
+Data/messaging: PostgreSQL, ClickHouse, Redis, RabbitMQ
+Auth: Keycloak/OIDC, Casbin, JWT
+AI/LLM: Langfuse v3, LangChain, MCP, OpenTelemetry, embeddings/vector search,
+prompt management, multi-provider routing (Cloudflare, DeepSeek, OpenAI)
+Infrastructure: Docker, Docker Compose, GitHub Actions, pre-commit
+Ops/observability: Kubernetes/EKS, Helm, ArgoCD, Grafana/Loki, Sentry/GlitchTip
+Dev tooling: Ruff, Pyright (strict), Prettier, Nx, pnpm
+
+STRENGTHS / POSITIONING
+- Python-first backend engineering across APIs, workers, databases, queues,
+  and shared platform services.
+- Performance profiling and root-cause analysis: GIL effects, synchronous
+  work on event loops, cache stampede behavior, DB connection pressure, CPU
+  throttling, memory limits, probe-induced restarts.
+- Production observability and LLM platform engineering: tracing, telemetry,
+  cost attribution, model routing, provider integrations.
+- Security-aware engineering: authorization semantics, tenant boundaries,
+  token flows, secret handling, sensitive telemetry.
+- Cross-service architectural reasoning: database ownership, migration
+  chains, service boundaries, operational safety.
+- Target positioning: Backend Engineer (AI/LLM Systems) — not equal-depth
+  full-stack; frontend is a supporting capability, not the pitch.
+
+EDUCATION
+B.E. Computer Science — East West Institute of Technology, Bengaluru,
+2020-2024, CGPA 8.4/10.
+
+CERTIFICATIONS
+- Claude Developer Certificate — completed.
+- AWS Certified Data Engineer - Associate — in progress / planned.
+- Earlier coursework: Databases and SQL for Data Science with Python (IBM);
+  Python Programming Specialization (University of Michigan).

@@ -1,0 +1,68 @@
+# Job-search profile for Deepak Vaduganambi.
+# Edit this file any time your target changes — the pipeline reads it fresh on every run.
+
+candidate:
+  name: Deepak Vaduganambi
+  current_employer: Oraczen
+  current_location: Bengaluru, India
+  digest_email: deepakramanujam321@gmail.com
+  resume_file: config/resume.txt
+
+role_focus:
+  # Titles used to build search queries. Keep this list short and specific —
+  # each one becomes several Brave Search queries per run.
+  titles:
+    - "Backend Engineer"
+    - "Software Engineer"
+    - "Platform Engineer"
+    - "AI Platform Engineer"
+    - "AI Infrastructure Engineer"
+    - "LLM Platform Engineer"
+    - "Backend Engineer AI"
+
+  # At least one of these should appear in a posting's title/description for it
+  # to survive the hard keyword filter in scripts/run_collect.py. Fine-grained
+  # fit scoring happens later, by the agent, against the full resume.
+  keywords_any:
+    - Python
+    - FastAPI
+    - Django
+    - Backend
+    - "Distributed systems"
+    - LLM
+    - LangChain
+    - "AI platform"
+    - "AI infrastructure"
+
+# Ordered by priority — most preferred first. Used by the agent to weight
+# fit scoring, not as a hard filter (so remote-but-unlabeled postings aren't
+# silently dropped).
+location_preference:
+  - "Remote (India)"
+  - "Hyderabad (on-site/hybrid)"
+  - "Bengaluru (on-site/hybrid)"
+  - "Remote (global, India-friendly)"
+  - "Other Indian metro (relocation)"
+
+salary_floor_lpa: 18 # only filters postings that explicitly state a lower figure
+
+exclusions:
+  companies:
+    - Oraczen
+  exclude_staffing_agencies: true
+  staffing_agency_markers: # case-insensitive substrings checked against company name
+    - staffing
+    - "recruit"
+    - "talent solutions"
+    - "consultancy services"
+    - "manpower"
+    - "hr solutions"
+
+sources:
+  ats_boards: true # Greenhouse / Lever / Ashby, discovered via Brave Search
+  remote_boards: true # RemoteOK API + WeWorkRemotely RSS
+  linkedin_indeed: true # public search results via Scrapling (stealth, no login) — best-effort, lower priority per ToS risk
+
+schedule:
+  collect: "weekdays, once per day" # see Routine: jobseeker-weekday-collect
+  digest: "Saturday morning" # see Routine: jobseeker-weekend-digest
