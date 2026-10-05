@@ -35,9 +35,11 @@ Routine fires  ─┐                Routine fires ─┐
 The split is deliberate: **scraping and sending are plain, testable Python
 scripts with no LLM in the loop** — reliable, debuggable, cheap to re-run.
 **Scoring fit and drafting outreach notes is done by the Claude agent itself**
-when a Routine fires, using the Supabase MCP connection already available in
-this environment — no second API key, no redundant LLM-calling code to
-maintain.
+when a Routine fires — no second API key, no redundant LLM-calling code to
+maintain. Routine-fired sessions in this account get a fresh container with
+no MCP connectors attached (not even Supabase), so the agent talks to the
+database through `scripts/db.py`, a small CLI over Supabase's REST API —
+works the same whether a human or an agent is driving it.
 
 Nothing is ever sent to an employer automatically. The weekday runs only
 populate a queue; you read and send the Saturday digest yourself.
@@ -60,6 +62,8 @@ src/jobseeker/
   config.py             loads profile.yaml / resume.txt / env vars
 scripts/
   run_collect.py        mechanical: fetch candidates, filter, print JSON
+  db.py                  CLI over Supabase REST: insert/list/update jobs,
+                        log runs — what the agent drives via Bash
   send_digest.py         mechanical: send a pre-built HTML file via Gmail SMTP
 ```
 
@@ -76,10 +80,10 @@ scripts/
 
 Project `deepakramanujam321-spec's Project` (`tssyakhdwewofhzcmxdj`), table
 `jobseeker_jobs`. Row-Level Security is enabled with **no policies** — this
-table is only ever written to via the Supabase MCP connection (service-role
-equivalent, bypasses RLS) inside a Claude Code session, never from a public
-client, so zero policies is the correct "nobody but the backend touches
-this" configuration, not an oversight.
+table is only ever written to via `scripts/db.py` using the service-role key
+(bypasses RLS), never from a public/anon client, so zero policies is the
+correct "nobody but the backend touches this" configuration, not an
+oversight.
 
 Columns worth knowing: `status` moves `new → scored → queued_for_digest →
 sent_in_digest`, `fit_score` (0-100) and `fit_rationale` are written by the
@@ -102,9 +106,12 @@ the full list and where to get each one:
   [app password](https://myaccount.google.com/apppasswords) for
   deepakramanujam321@gmail.com (requires 2-Step Verification). Do not use
   your real Gmail password here.
-
-Supabase needs no separate secret — the agent uses the Supabase MCP
-connection already authorized in this environment.
+- `SUPABASE_URL` (already filled in `.env.example`:
+  `https://tssyakhdwewofhzcmxdj.supabase.co`) and
+  `SUPABASE_SERVICE_ROLE_KEY` — from the Supabase dashboard for this
+  project, Project Settings -> API -> "service_role" secret (click reveal).
+  This key bypasses Row-Level Security, so it's a secret in the same class
+  as a database password — environment variable only, never in git or chat.
 
 ### 2. Install dependencies
 
