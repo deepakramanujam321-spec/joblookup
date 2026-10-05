@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>joblookup</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>joblookup</h1>
+  <div id="stats-bar" class="stats-bar">Loading…</div>
+</header>
+
+<section id="runs-panel" class="panel">
+  <h2>Pipeline health</h2>
+  <div id="runs-list">Loading…</div>
+</section>
+
+<section class="panel">
+  <h2>Jobs</h2>
+  <div class="filters">
+    <select id="filter-status">
+      <option value="">All statuses</option>
+      <option value="queued_for_digest">Queued for digest</option>
+      <option value="sent_in_digest">Sent in digest</option>
+      <option value="applied">Applied</option>
+      <option value="rejected">Rejected</option>
+      <option value="scored">Scored (below threshold)</option>
+      <option value="new">New (unscored)</option>
+      <option value="excluded">Excluded</option>
+    </select>
+    <input id="filter-search" type="search" placeholder="Search title or company…">
+    <input id="filter-min-score" type="number" min="0" max="100" placeholder="Min score">
+    <button id="filter-apply">Filter</button>
+  </div>
+  <div id="jobs-list">Loading…</div>
+</section>
+
+<script src="/app.js"></script>
+</body>
+</html>

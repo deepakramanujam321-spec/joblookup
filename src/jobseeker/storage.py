@@ -62,6 +62,70 @@ class SupabaseStore:
         resp.raise_for_status()
         return resp.json()
 
+    def query_jobs(
+        self,
+        status: str | None = None,
+        source: str | None = None,
+        min_score: float | None = None,
+        search: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Flexible listing for the dashboard — all filters optional."""
+        params: dict = {
+            "select": "*",
+            "order": "fit_score.desc.nullslast,discovered_at.desc",
+            "limit": str(limit),
+            "offset": str(offset),
+        }
+        if status:
+            params["status"] = f"eq.{status}"
+        if source:
+            params["source"] = f"eq.{source}"
+        if min_score is not None:
+            params["fit_score"] = f"gte.{min_score}"
+        if search:
+            # matches title OR company, case-insensitive substring
+            params["or"] = f"(title.ilike.*{search}*,company.ilike.*{search}*)"
+        resp = requests.get(f"{self.base}/{TABLE_JOBS}", headers=self._read_headers(), params=params, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_job(self, job_id: int) -> dict | None:
+        resp = requests.get(
+            f"{self.base}/{TABLE_JOBS}",
+            headers=self._read_headers(),
+            params={"id": f"eq.{job_id}", "select": "*"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        return rows[0] if rows else None
+
+    def stats(self) -> dict:
+        """Counts grouped by status, for the dashboard's summary header."""
+        resp = requests.get(
+            f"{self.base}/{TABLE_JOBS}",
+            headers=self._read_headers(),
+            params={"select": "status"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        counts: dict[str, int] = {}
+        for row in resp.json():
+            counts[row["status"]] = counts.get(row["status"], 0) + 1
+        return counts
+
+    def list_runs(self, limit: int = 20) -> list[dict]:
+        resp = requests.get(
+            f"{self.base}/{TABLE_RUNS}",
+            headers=self._read_headers(),
+            params={"select": "*", "order": "started_at.desc", "limit": str(limit)},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def update_job(self, job_id: int, fields: dict) -> None:
         resp = requests.patch(
             f"{self.base}/{TABLE_JOBS}",
