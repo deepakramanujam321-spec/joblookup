@@ -1,0 +1,33 @@
+name: Weekday job collect
+
+on:
+  schedule:
+    - cron: "30 3 * * 1-5" # 9:00 AM IST, Mon-Fri
+  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - run: scrapling install --force
+
+      - name: Fetch candidate postings
+        run: python scripts/run_collect.py > jobs.json
+        env:
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+
+      - name: Score fit and draft outreach notes
+        run: python scripts/score_and_draft.py --jobs-file jobs.json
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

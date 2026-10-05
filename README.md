@@ -8,63 +8,75 @@ ranked digest — ready to review and send over the weekend.
 ## How it works
 
 ```
-Weekdays (Mon-Fri)              Saturday morning
-───────────────────             ─────────────────
-Routine fires  ─┐                Routine fires ─┐
-                 │                                │
-  run_collect.py │  mechanical                    │
-  (Brave Search  │  scraping,                      │
-  + Scrapling)   │  no LLM calls                   │
-                 ▼                                 ▼
-  stdout: JSON list          Claude agent queries
-  of candidate jobs          jobseeker_jobs where
-                 │            status='queued_for_digest'
-                 ▼                                 │
-  Claude agent dedupes                              ▼
-  against Supabase,          Agent composes the
-  scores each new job        digest HTML, ranked
-  against resume.txt,        by fit_score, each
-  drafts an outreach         with its drafted note
-  note for strong fits                              │
-                 │                                   ▼
-                 ▼            send_digest.py (mechanical
-  jobseeker_jobs updated      Gmail SMTP send) → inbox
-  in Supabase
+Weekdays (Mon-Fri), GitHub Actions          Saturday morning, GitHub Actions
+───────────────────────────────             ───────────────────────────────
+run_collect.py                               run_digest.py
+  Brave Search discovery                       queries jobseeker.jobs
+  + Scrapling fetch across                     where status=
+  Greenhouse/Lever/Ashby,                      'queued_for_digest'
+  RemoteOK, WeWorkRemotely,                        │
+  LinkedIn/Indeed (best-effort)                    ▼
+  → deterministic filters                    renders one ranked HTML
+  → JSON on stdout                           email (pure templating,
+       │                                     no LLM call needed here --
+       ▼                                     scoring already happened)
+score_and_draft.py                                │
+  dedupes against Supabase,                        ▼
+  calls Claude (one structured                send_digest.py
+  tool-use call per job) to                    Gmail SMTP → your inbox
+  score fit + draft an                             │
+  outreach note for strong                          ▼
+  matches, writes results                     marks those rows
+  back to Supabase                            sent_in_digest
 ```
 
-The split is deliberate: **scraping and sending are plain, testable Python
-scripts with no LLM in the loop** — reliable, debuggable, cheap to re-run.
-**Scoring fit and drafting outreach notes is done by the Claude agent itself**
-when a Routine fires — no second API key, no redundant LLM-calling code to
-maintain. Routine-fired sessions in this account get a fresh container with
-no MCP connectors attached (not even Supabase), so the agent talks to the
-database through `scripts/db.py`, a small CLI over Supabase's REST API —
-works the same whether a human or an agent is driving it.
+Scraping, filtering, storage, and sending are all plain deterministic
+Python — reliable, debuggable, cheap to re-run. **Only one step calls an
+LLM**: scoring each new posting against the resume and drafting an outreach
+note for the strong matches (`scripts/score_and_draft.py`, via the
+Anthropic API). The Saturday digest is pure templating over already-scored
+data, no LLM call needed.
 
 Nothing is ever sent to an employer automatically. The weekday runs only
 populate a queue; you read and send the Saturday digest yourself.
+
+### Why GitHub Actions, not a Claude Code Routine
+
+The first version of this ran on a Claude Code Routine. That turned out not
+to work: Routine-fired sessions in this account get a fresh container with
+(a) no MCP connectors and (b) a locked-down network policy that blocks
+Supabase, Brave, Gmail, and every job board. GitHub Actions runners have
+ordinary internet access and no such restriction, so that's what this runs
+on now. See `.github/workflows/`.
 
 ## Project layout
 
 ```
 config/
-  profile.yaml      target roles, locations, salary floor, exclusions
-  resume.txt         resume text used for fit-scoring and drafting notes
+  profile.yaml         target roles, locations, salary floor, exclusions
+  resume.txt            resume text used for fit-scoring and drafting notes
 src/jobseeker/
-  brave_search.py     Brave Search API client (discovery)
-  scrapling_fetch.py  Scrapling wrapper (fast fetch + stealth fetch)
-  parsing.py           turns a fetched page into a JobListing
-  sources.py           one function per source: ATS boards, RemoteOK,
-                        WeWorkRemotely, LinkedIn/Indeed (best-effort)
-  filters.py            deterministic pre-filters (excluded companies,
-                        staffing agencies, keyword match, salary floor)
-  models.py             JobListing dataclass
-  config.py             loads profile.yaml / resume.txt / env vars
+  brave_search.py        Brave Search API client (discovery)
+  scrapling_fetch.py     Scrapling wrapper (fast fetch + stealth fetch)
+  parsing.py              turns a fetched page into a JobListing
+  sources.py              one function per source: ATS boards, RemoteOK,
+                          WeWorkRemotely, LinkedIn/Indeed (best-effort)
+  filters.py               deterministic pre-filters (excluded companies,
+                          staffing agencies, keyword match, salary floor)
+  models.py                 JobListing dataclass
+  storage.py                 Supabase REST client (jobseeker schema)
+  config.py                   loads profile.yaml / resume.txt / env vars
 scripts/
-  run_collect.py        mechanical: fetch candidates, filter, print JSON
-  db.py                  CLI over Supabase REST: insert/list/update jobs,
-                        log runs — what the agent drives via Bash
-  send_digest.py         mechanical: send a pre-built HTML file via Gmail SMTP
+  run_collect.py          mechanical: fetch candidates, filter, print JSON
+  score_and_draft.py        the one LLM step: score fit, draft outreach notes
+  run_digest.py              mechanical: render + send the weekly digest
+  send_digest.py              Gmail SMTP sender (also used standalone)
+  db.py                        CLI over storage.py, handy for manual debugging
+db/
+  (a separate Alembic project for schema migrations — see db/README.md)
+.github/workflows/
+  collect.yml              weekday cron -> run_collect.py + score_and_draft.py
+  digest.yml                 Saturday cron -> run_digest.py
 ```
 
 ## Data sources
@@ -78,77 +90,81 @@ scripts/
 
 ## Storage: Supabase
 
-Project `deepakramanujam321-spec's Project` (`tssyakhdwewofhzcmxdj`), table
-`jobseeker_jobs`. Row-Level Security is enabled with **no policies** — this
-table is only ever written to via `scripts/db.py` using the service-role key
-(bypasses RLS), never from a public/anon client, so zero policies is the
-correct "nobody but the backend touches this" configuration, not an
-oversight.
+Project `deepakramanujam321-spec's Project` (`tssyakhdwewofhzcmxdj`) in the
+`shifu` org, schema **`jobseeker`** — deliberately not `public`, so this
+project's tables never collide with the other apps sharing this Supabase
+project (gym tracking, learning log, etc). Tables: `jobseeker.jobs`,
+`jobseeker.runs`. RLS is enabled with **no policies** — this schema is only
+ever written to via `scripts/db.py` / `src/jobseeker/storage.py` using the
+service-role key (bypasses RLS), never from a public/anon client. Schema
+changes are tracked with Alembic — see `db/README.md` before changing
+anything by hand.
 
-Columns worth knowing: `status` moves `new → scored → queued_for_digest →
-sent_in_digest`, `fit_score` (0-100) and `fit_rationale` are written by the
-agent during the weekday run, `outreach_draft` holds the drafted note for
-jobs that scored high enough to be worth your time.
+There are two small leftover tables, `public.jobseeker_jobs` and
+`public.jobseeker_runs`, from before the move to a dedicated schema —
+empty, unused, harmless. Dropping them kept timing out (a Supabase-side
+issue at the time, not a lock on real data); safe to drop manually via the
+Supabase SQL editor whenever convenient, or leave them.
 
 ## Setup
 
 ### 1. Secrets
 
-This repo needs two secrets, set as **environment variables on this Claude
-Code environment** (Settings for this environment in the Claude Code web
-UI) — not committed to git, not pasted into chat. See `.env.example` for
-the full list and where to get each one:
+Add these as **GitHub Actions secrets** on this repo — Settings -> Secrets
+and variables -> Actions -> New repository secret — not committed to git,
+not pasted into chat:
 
-- `BRAVE_API_KEY` — from https://api.search.brave.com/app/keys (free tier:
+- `BRAVE_API_KEY` — https://api.search.brave.com/app/keys (free tier:
   2,000 queries/month; this pipeline uses roughly 20-25/day on a weekday
   run, well inside that).
+- `ANTHROPIC_API_KEY` — from console.anthropic.com. Used only for
+  `score_and_draft.py`'s per-job scoring call; at a few dozen jobs/day this
+  is pennies a month.
+- `SUPABASE_URL` — `https://tssyakhdwewofhzcmxdj.supabase.co`
+- `SUPABASE_SERVICE_ROLE_KEY` — Supabase dashboard -> this project ->
+  Project Settings -> API -> "service_role" secret (click reveal). This key
+  bypasses Row-Level Security, so treat it like a database password.
 - `GMAIL_ADDRESS` / `GMAIL_APP_PASSWORD` — an
-  [app password](https://myaccount.google.com/apppasswords) for
-  deepakramanujam321@gmail.com (requires 2-Step Verification). Do not use
-  your real Gmail password here.
-- `SUPABASE_URL` (already filled in `.env.example`:
-  `https://tssyakhdwewofhzcmxdj.supabase.co`) and
-  `SUPABASE_SERVICE_ROLE_KEY` — from the Supabase dashboard for this
-  project, Project Settings -> API -> "service_role" secret (click reveal).
-  This key bypasses Row-Level Security, so it's a secret in the same class
-  as a database password — environment variable only, never in git or chat.
+  [app password](https://myaccount.google.com/apppasswords) for your Gmail
+  account (requires 2-Step Verification). Do not use your real Gmail
+  password here.
 
-### 2. Install dependencies
+### 2. The two workflows
 
-```bash
-pip install -r requirements.txt
-scrapling install   # downloads the browser Scrapling's stealth fetcher needs
-```
+Already committed in `.github/workflows/` — they start running on their
+cron schedule as soon as the secrets above are set:
 
-### 3. The two Routines
+- **collect.yml** — Mon-Fri, 9:00 AM IST. Fetches candidates, scores them,
+  drafts outreach notes for strong matches.
+- **digest.yml** — Saturday, 9:00 AM IST. Sends the week's queued matches
+  as one email.
 
-Two scheduled Routines drive this (already created — see
-`mcp__Claude_Code_Remote__list_triggers` to inspect or adjust them):
+Both also support manual triggering from the repo's Actions tab
+(`workflow_dispatch`) if you want to run one on demand.
 
-- **jobseeker-weekday-collect** — fires once daily, Mon-Fri, 9:00 AM IST.
-  Runs `scripts/run_collect.py`, then scores and drafts outreach notes for
-  the results.
-- **jobseeker-weekend-digest** — fires Saturday, 9:00 AM IST. Compiles the
-  week's queued matches into one email and sends it via
-  `scripts/send_digest.py`.
+Note: GitHub disables a scheduled workflow automatically after 60 days
+with no commits to the repo. A commit (even a small one, like a
+`profile.yaml` tweak) resets that clock.
 
-To change the schedule, use `update_trigger` with a new `cron_expression`
-(cron is evaluated in UTC — IST is UTC+5:30).
-
-### 4. Tuning the search
+### 3. Tuning the search
 
 Edit `config/profile.yaml` any time — role titles, location priorities,
-salary floor, excluded companies — the next Routine firing picks it up
+salary floor, excluded companies — the next scheduled run picks it up
 automatically, no redeploy needed. Keep `config/resume.txt` in sync with
 your actual resume; it's what the agent scores every posting against.
 
 ## Local testing
 
 ```bash
+pip install -r requirements.txt
+scrapling install
+
 export BRAVE_API_KEY=...
 python scripts/run_collect.py --pretty | head -100
 ```
 
 This only exercises the mechanical scraping step — no Supabase writes, no
 emails sent, safe to run as often as you like while iterating on
-`profile.yaml` or the source parsers.
+`profile.yaml` or the source parsers. To test scoring too, also set
+`ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and run
+`python scripts/score_and_draft.py --jobs-file <file>`.
