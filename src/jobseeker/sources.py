@@ -4,6 +4,7 @@ raises — a source going down shouldn't take the whole run with it.
 
 from __future__ import annotations
 
+import sys
 from urllib.parse import urlparse
 
 import feedparser
@@ -73,7 +74,7 @@ def fetch_remoteok(profile: dict) -> list[JobListing]:
         resp.raise_for_status()
         rows = resp.json()
     except (requests.RequestException, ValueError) as e:
-        print(f"[sources] remoteok fetch failed: {e}")
+        print(f"[sources] remoteok fetch failed: {e}", file=sys.stderr)
         return []
 
     titles_lower = [t.lower() for t in profile["role_focus"]["titles"]]
@@ -112,7 +113,7 @@ def fetch_weworkremotely(profile: dict) -> list[JobListing]:
     try:
         feed = feedparser.parse(feed_url)
     except Exception as e:
-        print(f"[sources] weworkremotely fetch failed: {e}")
+        print(f"[sources] weworkremotely fetch failed: {e}", file=sys.stderr)
         return []
 
     keywords_lower = [k.lower() for k in profile["role_focus"]["keywords_any"]]

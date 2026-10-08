@@ -21,7 +21,7 @@ jobs:
       - run: scrapling install --force
 
       - name: Fetch candidate postings
-        run: python scripts/run_collect.py > jobs.json
+        run: python scripts/run_collect.py --output jobs.json
         env:
           BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
 

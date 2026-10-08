@@ -121,16 +121,17 @@ not pasted into chat:
 - An LLM provider key for `score_and_draft.py`'s per-job scoring call — at
   a few dozen jobs/day this is pennies a month on any provider. Scoring
   goes through [LiteLLM](https://docs.litellm.ai/docs/providers), so it's
-  provider-agnostic: set `LLM_MODEL` to pick the provider/model, and only
-  that provider's key actually needs a value (the others can stay empty
-  secrets, or just not be added at all):
+  provider-agnostic. Just add ONE of these key secrets and it's picked up
+  automatically (checked in this order; `LLM_MODEL` only needs setting if
+  you want to override the model that provider defaults to, or use a
+  provider not in this list):
 
-  | `LLM_MODEL` | key secret needed | get a key at |
+  | add this key secret | get a key at | and you get |
   |---|---|---|
-  | `anthropic/claude-sonnet-5` (default if `LLM_MODEL` unset) | `ANTHROPIC_API_KEY` | console.anthropic.com |
-  | `openai/gpt-4o-mini` | `OPENAI_API_KEY` | platform.openai.com |
-  | `gemini/gemini-2.0-flash` | `GEMINI_API_KEY` | aistudio.google.com/apikey |
-  | `groq/llama-3.3-70b-versatile` | `GROQ_API_KEY` | console.groq.com (fast, generous free tier) |
+  | `ANTHROPIC_API_KEY` | console.anthropic.com | `anthropic/claude-sonnet-5` |
+  | `OPENAI_API_KEY` | platform.openai.com | `openai/gpt-4o-mini` |
+  | `GEMINI_API_KEY` | aistudio.google.com/apikey | `gemini/gemini-2.0-flash` |
+  | `GROQ_API_KEY` | console.groq.com (fast, generous free tier) | `groq/llama-3.3-70b-versatile` |
 
   Any other [LiteLLM-supported model string](https://docs.litellm.ai/docs/providers)
   works too — `.github/workflows/collect.yml` just needs that provider's
@@ -194,7 +195,5 @@ python scripts/run_collect.py --pretty | head -100
 This only exercises the mechanical scraping step — no Supabase writes, no
 emails sent, safe to run as often as you like while iterating on
 `profile.yaml` or the source parsers. To test scoring too, also set
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and whichever provider key
-`LLM_MODEL` needs (see the table above; defaults to
-`ANTHROPIC_API_KEY`/`anthropic/claude-sonnet-5` if `LLM_MODEL` is unset),
-then run `python scripts/score_and_draft.py --jobs-file <file>`.
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and one provider key from the
+table above, then run `python scripts/score_and_draft.py --jobs-file <file>`.

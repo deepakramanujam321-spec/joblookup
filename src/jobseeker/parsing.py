@@ -10,6 +10,7 @@ scoring, so over-extraction here is cheap and under-extraction is costly.
 from __future__ import annotations
 
 import re
+import sys
 from urllib.parse import urlparse
 
 from .models import JobListing
@@ -77,5 +78,5 @@ def parse_fetched_page(page, url: str, source: str) -> JobListing | None:
             description=body_text[:MAX_DESCRIPTION_CHARS],
         )
     except Exception as e:
-        print(f"[parsing] failed to parse {url}: {e}")
+        print(f"[parsing] failed to parse {url}: {e}", file=sys.stderr)
         return None

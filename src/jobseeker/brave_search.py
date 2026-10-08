@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 
 import requests
@@ -33,7 +34,7 @@ def search(query: str, api_key: str, count: int = 10) -> list[dict]:
             for r in results
         ]
     except requests.RequestException as e:
-        print(f"[brave_search] query failed: {query!r}: {e}")
+        print(f"[brave_search] query failed: {query!r}: {e}", file=sys.stderr)
         return []
     finally:
         time.sleep(1)  # be a polite API citizen, stay well under rate limits

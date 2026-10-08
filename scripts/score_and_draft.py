@@ -10,12 +10,18 @@ supports ("anthropic/claude-sonnet-5", "openai/gpt-4o-mini",
 provider's API key env var — no code changes. See README.md for the
 model-string-to-env-var mapping.
 
+If LLM_MODEL isn't set, the model is auto-detected from whichever provider
+key actually has a value (see PROVIDER_AUTODETECT below) -- setting
+ANTHROPIC_API_KEY or OPENAI_API_KEY alone is enough to get going, no second
+"now tell me which one to use" secret required.
+
 Usage:
-    python scripts/run_collect.py > jobs.json
+    python scripts/run_collect.py --output jobs.json
     python scripts/score_and_draft.py --jobs-file jobs.json
 
-Requires SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, LLM_MODEL (optional,
-defaults below), and whichever API key env var LLM_MODEL's provider needs.
+Requires SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and at least one provider
+API key (LLM_MODEL optional -- only needed to pick between multiple, or to
+use a model not in the autodetect list below).
 """
 
 from __future__ import annotations
@@ -35,9 +41,30 @@ from jobseeker import config
 from jobseeker.models import JobListing
 from jobseeker.storage import SupabaseStore
 
-DEFAULT_MODEL = "anthropic/claude-sonnet-5"
+# Checked in order if LLM_MODEL isn't set explicitly -- first provider key
+# with a real value wins.
+PROVIDER_AUTODETECT = [
+    ("ANTHROPIC_API_KEY", "anthropic/claude-sonnet-5"),
+    ("OPENAI_API_KEY", "openai/gpt-4o-mini"),
+    ("GEMINI_API_KEY", "gemini/gemini-2.0-flash"),
+    ("GROQ_API_KEY", "groq/llama-3.3-70b-versatile"),
+]
 FIT_SCORE_THRESHOLD = 70
 MAX_JOBS_PER_RUN = 50  # cost/time ceiling in case a run surfaces an unusual flood of results
+
+
+def resolve_model() -> str:
+    explicit = os.environ.get("LLM_MODEL")
+    if explicit:
+        return explicit
+    for key_name, model in PROVIDER_AUTODETECT:
+        if os.environ.get(key_name):
+            return model
+    raise RuntimeError(
+        "No LLM_MODEL set and no known provider API key found (checked "
+        f"{[k for k, _ in PROVIDER_AUTODETECT]}). Set LLM_MODEL plus that "
+        "provider's key -- see README.md."
+    )
 
 ASSESSMENT_TOOL = {
     "type": "function",
@@ -121,9 +148,7 @@ def main() -> int:
 
     profile = config.load_profile()
     resume_text = config.load_resume_text(profile)
-    # `or` (not .get's default arg) because GitHub Actions sets an unset
-    # secret's env var to an empty string rather than omitting it.
-    model = os.environ.get("LLM_MODEL") or DEFAULT_MODEL
+    model = resolve_model()
 
     supabase_url = config.require_env("SUPABASE_URL")
     supabase_key = config.require_env("SUPABASE_SERVICE_ROLE_KEY")
