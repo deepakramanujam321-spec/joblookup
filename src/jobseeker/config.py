@@ -29,3 +29,17 @@ def require_env(name: str) -> str:
             f"See .env.example for what's needed and README.md for where to set it."
         )
     return value
+
+
+def require_env_any(names: list[str]) -> str:
+    """Like require_env, but tries several names in order -- for a setting
+    with a generic name (SMTP_USERNAME) and a legacy/convenience alias
+    (GMAIL_ADDRESS), without forcing every deployment to set both."""
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    raise RuntimeError(
+        f"Missing required environment variable: set one of {names}. "
+        f"See .env.example for what's needed and README.md for where to set it."
+    )

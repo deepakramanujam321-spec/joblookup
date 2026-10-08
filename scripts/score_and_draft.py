@@ -59,9 +59,9 @@ ASSESSMENT_TOOL = {
                     "type": ["string", "null"],
                     "description": (
                         "A short outreach/application note in the candidate's voice, 3-5 sentences: "
-                        "why this role fits his backend/AI-platform experience, one concrete anchor "
-                        "story from the resume relevant to THIS posting, a clear ask to move forward. "
-                        "Required if fit_score >= 70, otherwise null."
+                        "why this role fits the candidate's experience (per the resume below), one "
+                        "concrete anchor story from the resume relevant to THIS posting, a clear ask "
+                        "to move forward. Required if fit_score >= 70, otherwise null."
                     ),
                 },
             },
@@ -96,10 +96,10 @@ URL: {job['url']}
 Description:
 {(job.get('description') or '')[:3000]}
 
-Score this posting's fit for this candidate, 0-100, based on his ACTUAL experience and
-skills above — don't invent generic strengths he hasn't demonstrated. Weigh location against
-his stated priority order and apply the salary floor only when a figure is actually given.
-Call submit_job_assessment with your result."""
+Score this posting's fit for this candidate, 0-100, based on the ACTUAL experience and
+skills in the resume above — don't invent generic strengths not demonstrated there. Weigh
+location against the candidate's stated priority order and apply the salary floor only when
+a figure is actually given. Call submit_job_assessment with your result."""
 
 
 def assess_job(model: str, job: dict, resume_text: str, profile: dict) -> dict:

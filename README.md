@@ -167,6 +167,19 @@ salary floor, excluded companies — the next scheduled run picks it up
 automatically, no redeploy needed. Keep `config/resume.txt` in sync with
 your actual resume; it's what the agent scores every posting against.
 
+### Reusing this for someone else
+
+Nothing under `src/`, `scripts/`, or `webapp/` references a specific
+person — every personal detail (name, resume, role targets, location
+priorities, salary floor, exclusions, digest recipient) lives in
+`config/profile.yaml` and `config/resume.txt`, and every credential is an
+env var, never a literal in code. For someone else to run their own
+instance: fork the repo, replace those two config files with their own,
+set up their own Supabase project (`db/` has the schema migration) and
+their own secrets, deploy their own dashboard. No Python changes needed —
+if a change to get someone else running *does* require editing `.py`
+files, that's a bug in this repo, not an expected step.
+
 ## Local testing
 
 ```bash

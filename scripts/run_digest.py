@@ -75,8 +75,8 @@ def main() -> int:
     html_body = render_digest(jobs)
     today = date.today().isoformat()
 
-    from_addr = config.require_env("GMAIL_ADDRESS")
-    app_password = config.require_env("GMAIL_APP_PASSWORD")
+    from_addr = config.require_env_any(["SMTP_USERNAME", "GMAIL_ADDRESS"])
+    app_password = config.require_env_any(["SMTP_PASSWORD", "GMAIL_APP_PASSWORD"])
     to_addr = profile["candidate"]["digest_email"]
     subject = f"Job digest — {len(jobs)} new match{'es' if len(jobs) != 1 else ''} — {today}"
 
