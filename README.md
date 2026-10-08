@@ -33,9 +33,10 @@ score_and_draft.py                                │
 Scraping, filtering, storage, and sending are all plain deterministic
 Python — reliable, debuggable, cheap to re-run. **Only one step calls an
 LLM**: scoring each new posting against the resume and drafting an outreach
-note for the strong matches (`scripts/score_and_draft.py`, via the
-Anthropic API). The Saturday digest is pure templating over already-scored
-data, no LLM call needed.
+note for the strong matches (`scripts/score_and_draft.py`, via
+[LiteLLM](https://docs.litellm.ai/docs/providers) — any provider works, see
+`LLM_MODEL` in Setup below). The Saturday digest is pure templating over
+already-scored data, no LLM call needed.
 
 Nothing is ever sent to an employer automatically. The weekday runs only
 populate a queue; you read and send the Saturday digest yourself.
