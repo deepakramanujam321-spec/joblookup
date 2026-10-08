@@ -28,6 +28,14 @@ jobs:
       - name: Score fit and draft outreach notes
         run: python scripts/score_and_draft.py --jobs-file jobs.json
         env:
+          # Provider-agnostic via LiteLLM -- set LLM_MODEL to whichever
+          # provider/model you want (default: anthropic/claude-sonnet-5) and
+          # only that provider's key needs to actually be set; the rest are
+          # harmlessly empty. See README.md for the model->key mapping.
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
