@@ -235,4 +235,5 @@ def _deterministic_rationale(result: dict) -> str:
     if result["gaps"]:
         parts.append(result["gaps"][0])
     note = "Scored from structured signals only (no AI analysis for this posting)."
-    return " ".join(parts + [note]) if parts else note
+    sentences = [p.rstrip(".") + "." for p in parts]
+    return " ".join(sentences + [note])

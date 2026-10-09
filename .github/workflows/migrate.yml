@@ -1,0 +1,40 @@
+name: Migrate database
+
+# Deliberate, manual schema changes: Alembic applies the linear chain in
+# db/versions up to `target` (default: head). Run this after merging a PR
+# that adds a migration, *before* the next scheduled pipeline run.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Alembic target revision"
+        default: "head"
+        required: true
+
+concurrency:
+  group: pipeline-writes
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    defaults:
+      run:
+        working-directory: db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Current revision
+        run: alembic current
+      - name: Pending migrations
+        run: alembic history --indicate-current -r "current:${{ inputs.target }}"
+      - name: Upgrade
+        run: alembic upgrade "${{ inputs.target }}"
+      - name: New revision
+        run: alembic current

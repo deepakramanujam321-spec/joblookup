@@ -1,4 +1,14 @@
 fastapi>=0.115
 uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+sqlalchemy>=2.0
+psycopg[binary]>=3.2
+pydantic>=2.7
 requests>=2.31
 pyyaml>=6.0
+beautifulsoup4>=4.12
+nh3>=0.2
+pypdf>=4.0
+python-docx>=1.1
+cryptography>=42
+litellm>=1.50

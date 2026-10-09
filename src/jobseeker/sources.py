@@ -17,13 +17,6 @@ from .parsing import parse_fetched_page
 
 BOARD_EXPANSION_LIMIT = 15  # extra relevant postings pulled per discovered ATS board
 
-ATS_DOMAINS = {
-    "boards.greenhouse.io": "greenhouse",
-    "job-boards.greenhouse.io": "greenhouse",
-    "jobs.lever.co": "lever",
-    "jobs.ashbyhq.com": "ashby",
-}
-
 STEALTH_SOURCES = {"ashby", "linkedin", "indeed"}
 
 
@@ -40,30 +33,7 @@ def _build_ats_queries(titles: list[str]) -> list[str]:
     return queries
 
 
-def listing_from_ats(job: ats.AtsJob, fallback_company: str = "") -> JobListing:
-    salary = job.salary or {}
-    return JobListing(
-        source=job.source,
-        url=job.url,
-        title=job.title,
-        company=job.company or fallback_company,
-        location=job.location,
-        remote_type=job.remote_type or "",
-        salary_text=job.salary_text,
-        description=job.description_text,
-        external_id=job.external_id,
-        posted_at=str(job.posted_at or ""),
-        description_html=job.description_html or "",
-        description_source=f"{job.source}_api",
-        description_is_partial=False,
-        posted_at_evidence=job.posted_at_evidence or "",
-        source_updated_at=str(job.updated_at or ""),
-        employment_type=job.employment_type or "",
-        salary_min=salary.get("min"),
-        salary_max=salary.get("max"),
-        salary_currency=salary.get("currency") or "",
-        salary_period=salary.get("period") or "",
-    )
+listing_from_ats = ats.to_listing  # kept for callers of the old name
 
 
 def _title_is_relevant(title: str, profile: dict) -> bool:

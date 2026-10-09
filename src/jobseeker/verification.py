@@ -116,9 +116,7 @@ def apply_check(conn: Connection, job: dict, check: Check, now: datetime) -> str
 def apply_ats_data(conn: Connection, job: dict, ats_job: ats.AtsJob, now: datetime) -> None:
     """Official API data supersedes scraped data for the fields it covers;
     company is only filled when it was unknown."""
-    from .sources import listing_from_ats
-
-    listing = listing_from_ats(ats_job, job.get("company") or "")
+    listing = ats.to_listing(ats_job, job.get("company") or "")
     fields = ingest.normalized_fields(listing)
     keep_if_known = {"company"}
     updates = {}

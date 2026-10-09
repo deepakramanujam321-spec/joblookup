@@ -1,0 +1,6 @@
+-r requirements.txt
+-r webapp/requirements.txt
+-r db/requirements.txt
+pytest>=8
+httpx>=0.27
+ruff>=0.6

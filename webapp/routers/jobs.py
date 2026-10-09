@@ -78,7 +78,7 @@ def verify_now(job_id: int, user: CurrentUser):
     job = detail["job"]
     check = verification.check_job(job, ats.AshbyBoardCache())
     if check is None:
-        raise HTTPException(422, f"{job['source']} listings can't be checked automatically. Open the original posting to confirm.")
+        raise HTTPException(422, "This listing can't be checked automatically (no official API for its URL, or its source forbids automated access). Open the original posting to confirm.")
     now = datetime.now(timezone.utc)
     with engine().begin() as conn:
         if check.ats_job:

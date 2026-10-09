@@ -53,7 +53,22 @@ async def security_headers(request: Request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
+    else:
+        response.headers.setdefault("Content-Security-Policy", CSP)
     return response
+
+
+# Scripts only from this origin, plus Google's Drive Picker; job
+# descriptions are sanitized server-side and this blocks anything that
+# slipped through from executing. Inline *styles* are allowed (React style
+# props); inline *scripts* are not.
+CSP = (
+    "default-src 'self'; script-src 'self' https://apis.google.com; "
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
+    "frame-src https://docs.google.com https://drive.google.com; "
+    "connect-src 'self' https://content.googleapis.com; object-src 'none'; base-uri 'self'; form-action 'self'; "
+    "frame-ancestors 'none'"
+)
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "frontend" / "dist"

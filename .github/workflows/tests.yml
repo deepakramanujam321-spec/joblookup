@@ -1,0 +1,48 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request: {}
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      # scrapling is the collector's browser stack; tests never use it.
+      - run: grep -v scrapling requirements.txt > /tmp/req.txt && pip install -r /tmp/req.txt -r webapp/requirements.txt -r db/requirements.txt pytest httpx ruff
+      - run: ruff check --select F,E9,B --ignore B008,B904,E402 src scripts webapp tests db
+      - run: pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: webapp/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: webapp/frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

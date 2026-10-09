@@ -22,6 +22,7 @@ from urllib.parse import parse_qs, urlparse
 import requests
 
 from . import normalize
+from .models import JobListing
 
 USER_AGENT = "joblookup/2.0 (personal job-search assistant)"
 TIMEOUT = 15
@@ -329,3 +330,30 @@ def list_board(source: str, board: str, ashby: AshbyBoardCache) -> list[AtsJob] 
     if source == "ashby":
         return ashby.list(board)
     return None
+
+
+def to_listing(job: AtsJob, fallback_company: str = "") -> JobListing:
+    """The common JobListing shape, marked as a complete API description."""
+    salary = job.salary or {}
+    return JobListing(
+        source=job.source,
+        url=job.url,
+        title=job.title,
+        company=job.company or fallback_company,
+        location=job.location,
+        remote_type=job.remote_type or "",
+        salary_text=job.salary_text,
+        description=job.description_text,
+        external_id=job.external_id,
+        posted_at=str(job.posted_at or ""),
+        description_html=job.description_html or "",
+        description_source=f"{job.source}_api",
+        description_is_partial=False,
+        posted_at_evidence=job.posted_at_evidence or "",
+        source_updated_at=str(job.updated_at or ""),
+        employment_type=job.employment_type or "",
+        salary_min=salary.get("min"),
+        salary_max=salary.get("max"),
+        salary_currency=salary.get("currency") or "",
+        salary_period=salary.get("period") or "",
+    )

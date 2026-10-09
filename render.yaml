@@ -7,11 +7,29 @@ services:
     plan: free
     healthCheckPath: /api/health
     envVars:
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
+      # Required
+      - key: DATABASE_URL # Supabase -> Connect -> "Session pooler" URI
         sync: false
       - key: DASHBOARD_USERNAME
         sync: false
       - key: DASHBOARD_PASSWORD
+        sync: false
+      # Private resume storage (Supabase Storage) -- same project's REST URL + service key
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Draft generation / resume extraction: any one LiteLLM provider key
+      - key: OPENAI_API_KEY
+        sync: false
+      # Optional Google (Gmail drafts, Drive import) -- see README "Google integrations"
+      - key: TOKEN_ENCRYPTION_KEY
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GOOGLE_APP_ID
         sync: false

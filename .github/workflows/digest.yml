@@ -1,34 +1,44 @@
-name: Weekend job digest
+name: Weekend digest
 
 on:
   schedule:
     - cron: "30 3 * * 6" # 9:00 AM IST, Saturday
-  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
+  workflow_dispatch: {}
+
+concurrency:
+  group: pipeline-writes
+  cancel-in-progress: false
 
 jobs:
   digest:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          test -n "$DATABASE_URL" || { echo "::error::DATABASE_URL secret is missing. See README -> Setup."; exit 1; }
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - run: pip install -r requirements.txt
 
-      - name: Build and send the weekly digest
+      - name: Re-check queued listings before sending
+        run: python scripts/run_verify.py --limit 100
+
+      - name: Send digest
         run: python scripts/run_digest.py
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # Any SMTP provider works -- set SMTP_HOST/SMTP_PORT too if not Gmail.
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          # Convenience aliases for the common case (Gmail) -- used only if
-          # the SMTP_* secrets above are left unset.
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}

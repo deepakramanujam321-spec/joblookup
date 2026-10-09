@@ -1,0 +1,40 @@
+name: Backfill / re-score
+
+# Brings existing rows up to the current enrichment + scoring versions
+# (official ATS data, evidence-backed posting dates, match breakdowns).
+# Safe to re-run: unchanged rows are skipped, assessments are cached.
+on:
+  workflow_dispatch:
+    inputs:
+      llm_budget:
+        description: "Max semantic LLM calls this run (cost cap; ~$0.001 each on gpt-4o-mini)"
+        default: "120"
+        required: true
+
+concurrency:
+  group: pipeline-writes
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Enrich and score
+        run: python scripts/run_enrich.py --llm-budget "${{ inputs.llm_budget }}"
+        env:
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      - name: Verify listings
+        run: python scripts/run_verify.py --limit 300

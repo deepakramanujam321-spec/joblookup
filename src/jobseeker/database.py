@@ -359,5 +359,8 @@ def get_engine(url: str | None = None) -> Engine:
         pool_recycle=300,
         # No search_path startup option: Supabase's pooler doesn't reliably
         # forward it, and every Table above is schema-qualified anyway.
-        connect_args={"connect_timeout": 10},
+        # prepare_threshold=None: no server-side prepared statements, which
+        # break behind a transaction-mode pooler -- so either of Supabase's
+        # pooler URIs (session :5432 or transaction :6543) works.
+        connect_args={"connect_timeout": 10, "prepare_threshold": None},
     )
