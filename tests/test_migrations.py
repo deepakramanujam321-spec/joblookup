@@ -82,3 +82,11 @@ def test_table_definitions_match_migrated_schema(engine):
     for table in metadata.sorted_tables:
         db_columns = {c["name"] for c in inspector.get_columns(table.name, schema=SCHEMA)}
         assert {c.name for c in table.columns} == db_columns, f"drift in {table.name}"
+
+
+def test_database_url_accepts_any_postgres_scheme():
+    from jobseeker.database import normalize_database_url
+
+    tail = "u:p%25w@host:5432/postgres"
+    for scheme in ("postgres", "postgresql", "postgresql+asyncpg", "postgresql+psycopg2", "postgresql+psycopg"):
+        assert normalize_database_url(f"  {scheme}://{tail}\n") == f"postgresql+psycopg://{tail}"

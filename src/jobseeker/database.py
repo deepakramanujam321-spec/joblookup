@@ -345,11 +345,13 @@ audit_log = sa.Table(
 
 
 def normalize_database_url(url: str) -> str:
-    """Supabase hands out `postgresql://` / `postgres://` URLs; SQLAlchemy
-    would pick psycopg2 for those. Pin the psycopg (v3) driver we ship."""
-    for prefix in ("postgres://", "postgresql://"):
-        if url.startswith(prefix):
-            return "postgresql+psycopg://" + url[len(prefix):]
+    """Accept whatever form a Postgres URL is pasted in -- `postgres://`,
+    `postgresql://` or any `postgresql+<driver>://` (asyncpg, psycopg2...)
+    -- and pin the psycopg (v3) driver this app ships with."""
+    url = url.strip()
+    scheme, sep, rest = url.partition("://")
+    if sep and scheme.split("+")[0] in ("postgres", "postgresql"):
+        return "postgresql+psycopg://" + rest
     return url
 
 

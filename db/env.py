@@ -28,7 +28,9 @@ if not database_url:
     )
 # Escape % for configparser: URL-encoded passwords (e.g. %40 for "@")
 # otherwise crash with "invalid interpolation syntax".
-database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1).replace("postgres://", "postgresql+psycopg://", 1)
+scheme, _, rest = database_url.strip().partition("://")
+if scheme.split("+")[0] in ("postgres", "postgresql"):
+    database_url = "postgresql+psycopg://" + rest  # same driver as the app, whatever was pasted
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 target_metadata = None
