@@ -43,6 +43,12 @@ class SupabaseStore:
         if not listings:
             return 0
         rows = [{**l.to_dict(), "status": "new"} for l in listings]
+        for row in rows:
+            # JobListing defaults posted_at to "" when unknown (most
+            # sources never set it) -- NULL is the more honest "unknown"
+            # than an empty string, so normalize before it reaches Postgres.
+            if not row.get("posted_at"):
+                row["posted_at"] = None
         resp = requests.post(
             f"{self.base}/{TABLE_JOBS}?on_conflict=url",
             headers=self._write_headers("resolution=ignore-duplicates,return=representation"),
