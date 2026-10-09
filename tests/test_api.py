@@ -265,3 +265,13 @@ def test_spa_deep_links(client, tmp_path, monkeypatch):
     assert client.get("/jobs/123", auth=None).text == "<div id=root></div>"
     assert client.get("/api/v2/nope").status_code == 404
     assert client.get("/../../etc/passwd", auth=None).text == "<div id=root></div>"
+
+
+def test_health_explains_database_failures(monkeypatch):
+    import main
+
+    assert main.classify_db_error(RuntimeError("DATABASE_URL is not set. ...")) == "not_configured"
+    assert main.classify_db_error(Exception('FATAL:  password authentication failed for user "postgres"')) == "auth_failed"
+    assert main.classify_db_error(Exception("FATAL: Tenant or user not found")) == "auth_failed"
+    assert main.classify_db_error(Exception("failed to resolve host 'x': Name or service not known")) == "host_not_found"
+    assert main.classify_db_error(Exception("connection refused")) == "unreachable"

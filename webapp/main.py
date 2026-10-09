@@ -36,13 +36,54 @@ async def unhandled(request: Request, exc: Exception):
 
 @app.get("/api/health")
 def health():
-    """Unauthenticated liveness + database reachability."""
+    """Unauthenticated liveness + database reachability. Render gates
+    deploys on this, so a misconfigured database never replaces a working
+    version -- and the reason is logged (once per change) so the deploy log
+    says what to fix."""
     try:
         with engine().connect() as conn:
             conn.execute(sa.text("select 1"))
+        _log_health("ok", None)
         return {"ok": True, "database": "ok"}
-    except Exception:
-        return JSONResponse({"ok": False, "database": "unreachable"}, status_code=503)
+    except Exception as exc:
+        reason = classify_db_error(exc)
+        _log_health(reason, exc)
+        return JSONResponse({"ok": False, "database": reason}, status_code=503)
+
+
+_last_health_state: str | None = None
+
+
+def _log_health(state: str, exc: Exception | None) -> None:
+    global _last_health_state
+    if state == _last_health_state:
+        return  # health is polled every few seconds; log transitions only
+    _last_health_state = state
+    if exc is None:
+        log.warning("database health: ok")
+    else:
+        # Driver messages name host/user but never the password.
+        detail = str(getattr(exc, "orig", None) or exc).strip().splitlines()[0][:300]
+        log.error("database health: %s -- %s: %s. %s", state, type(exc).__name__, detail, DB_HINTS.get(state, ""))
+
+
+DB_HINTS = {
+    "not_configured": "Set DATABASE_URL (Supabase -> Connect -> Session pooler URI) in this service's environment.",
+    "auth_failed": "Wrong username or password in DATABASE_URL (special characters in the password must be URL-encoded).",
+    "host_not_found": "The host in DATABASE_URL doesn't resolve; copy the pooler URI again.",
+    "unreachable": "The database didn't accept the connection (wrong port/host, or Supabase project paused).",
+}
+
+
+def classify_db_error(exc: Exception) -> str:
+    text = f"{type(exc).__name__} {exc}".lower()
+    if "database_url is not set" in text:
+        return "not_configured"
+    if "password authentication failed" in text or "tenant or user not found" in text or "authentication" in text:
+        return "auth_failed"
+    if "resolve host" in text or "name or service not known" in text or "nodename nor servname" in text:
+        return "host_not_found"
+    return "unreachable"
 
 
 @app.middleware("http")
