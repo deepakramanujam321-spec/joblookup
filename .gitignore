@@ -9,3 +9,4 @@ node_modules/
 webapp/frontend/dist/
 .pytest_cache/
 .ruff_cache/
+*.tsbuildinfo
