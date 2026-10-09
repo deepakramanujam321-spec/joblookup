@@ -128,7 +128,8 @@ def html_to_text(raw: str | None) -> str:
 
 _CURRENCY_SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP", "₹": "INR"}
 _CURRENCY_CODES = ("USD", "EUR", "GBP", "INR", "CAD", "AUD", "SGD")
-_NUM = r"(\d{1,3}(?:[,\s]\d{3})+|\d+(?:\.\d+)?)\s*([kKmM]|lpa|lakhs?|lacs?|l\b|cr)?"
+# Indian grouping (12,00,000) first, then Western (1,200,000), then plain numbers.
+_NUM = r"(\d{1,3}(?:,\d{2})+,\d{3}|\d{1,3}(?:[,\s]\d{3})+|\d+(?:\.\d+)?)\s*([kKmM]|lpa|lakhs?|lacs?|l\b|cr)?"
 _RANGE_RE = re.compile(_NUM + r"\s*(?:-|–|—|to)\s*[$€£₹]?\s*" + _NUM, re.I)
 _SINGLE_RE = re.compile(_NUM, re.I)
 

@@ -41,6 +41,7 @@ def test_search_pages_are_not_listings():
     ("120,000 - 150,000 USD per year", {"min": 120000, "max": 150000, "currency": "USD", "period": "year"}),
     ("$60 - $80 per hour", {"min": 60, "max": 80, "currency": "USD", "period": "hour"}),
     ("30 LPA", {"min": 3000000, "max": 3000000, "currency": "INR", "period": "year"}),
+    ("₹12,00,000 - ₹18,00,000 per annum", {"min": 1200000, "max": 1800000, "currency": "INR", "period": "year"}),
 ])
 def test_parse_salary(text, expected):
     assert n.parse_salary(text) == expected

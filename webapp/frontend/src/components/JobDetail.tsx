@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useFeedbackCategories, useJob, useSubmitFeedback, useUpdateApplication, useVerifyJob } from "../api/hooks";
 import type { JobDetail, MatchComponent, WorkflowStatus } from "../api/types";
-import { absolute, evidenceLabel, FRESHNESS_LABELS, postedLabel, salaryLabel, SOURCE_LABELS, STATUS_LABELS, title } from "../lib/format";
+import { absolute, evidenceLabel, FRESHNESS_LABELS, postedLabel, SOURCE_LABELS, STATUS_LABELS, title } from "../lib/format";
 import { ApplicationWorkspace } from "./ApplicationWorkspace";
-import { Badge, Bar, ErrorState, Modal, Score, Skeleton, Time, errorMessage, useConfirm, useToast } from "./ui";
+import { Badge, Bar, ErrorState, Modal, SalaryBadge, Score, Skeleton, Time, errorMessage, useConfirm, useToast } from "./ui";
 
 type Tab = "match" | "description" | "application" | "history";
 
@@ -41,7 +41,6 @@ function Header({ detail }: { detail: JobDetail }) {
   const status = detail.workflow_status;
   const saved = detail.application?.saved ?? false;
   const freshness = job.priority_explanation?.freshness;
-  const salary = salaryLabel(job);
   const closed = job.verification_status === "closed";
 
   const setStatus = async (target: WorkflowStatus, opts: { confirmText?: string; note?: string } = {}) => {
@@ -73,10 +72,10 @@ function Header({ detail }: { detail: JobDetail }) {
         {job.employment_type && <span>{title(job.employment_type)}</span>}
         {job.seniority && <span>{title(job.seniority)}</span>}
         {job.experience_text && <span title="Extracted from the description">{job.experience_text}</span>}
-        {salary && <span title={job.salary_source === "source_structured" ? "Stated by the source" : "Parsed from the listing text"}>{salary}</span>}
       </div>
       <div className="row wrap" style={{ gap: 6 }}>
         <Badge tone="accent">{STATUS_LABELS[status]}</Badge>
+        <SalaryBadge job={job} />
         <Badge tone={job.posted_at_ts ? "" : "warn"} title={job.posted_at_ts ? `${absolute(job.posted_at_ts)} · ${evidenceLabel(job.posted_at_evidence)}` : "The source didn't provide a publication date"}>
           {postedLabel(job.posted_at_ts)}
         </Badge>

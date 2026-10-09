@@ -196,6 +196,7 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
         "confidence": result.get("confidence"),
         # False = deterministic-only; the pipeline retries the semantic read later.
         "semantic": result["components"]["semantic"]["score"] is not None,
+        "salary": salary_status(job, result["components"]["compensation"]),
     }
     conn.execute(
         sa.update(jobs).where(jobs.c.id == job["id"]).values(
@@ -206,6 +207,19 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
     candidate_skills = matching.candidate_skill_set(profile, resume_text)
     persist_priority(conn, job, result["overall_score"], profile, candidate_skills, learned, now)
     return {"assessment": result, "draft": draft, "llm_called": llm_called, "cached": bool(cached)}
+
+
+def salary_status(job: dict, compensation: dict) -> str:
+    """not_stated | meets | below | stated (stated but not comparable, e.g.
+    no minimum set or an unconvertible currency). Shown on every job so it's
+    obvious at a glance whether pay is known and whether it clears the floor."""
+    if job.get("salary_min") is None and job.get("salary_max") is None and not job.get("salary_text"):
+        return "not_stated"
+    if compensation.get("score") == 100:
+        return "meets"
+    if compensation.get("score") == 15:
+        return "below"
+    return "stated"
 
 
 def previous_semantic(conn: Connection, job_id: int, owner: str) -> dict | None:

@@ -54,3 +54,4 @@ def test_digest_render_is_escaped_and_honest():
         "fit_score": 82, "priority_score": 85, "fit_rationale": "Good", "posted_at_ts": None, "draft_body": "Hi",
     }], "https://jl.example.com")
     assert "<script>x" not in html and "posting date unavailable" in html and "https://jl.example.com/jobs/7" in html
+    assert "Salary not stated" in html

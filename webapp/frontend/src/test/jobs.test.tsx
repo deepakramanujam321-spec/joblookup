@@ -26,6 +26,17 @@ describe("JobList", () => {
     expect(screen.getByText("Posting date unavailable")).toBeInTheDocument();
   });
 
+  it("always says whether salary is stated and how it compares", () => {
+    renderAt("/", "/", <JobList loading={false} error={null} refetch={() => {}} selectedId={null} onOpen={() => {}} view="all" items={[
+      listItem({ id: 1 }),
+      listItem({ id: 2, salary_min: 2000000, salary_max: 3000000, salary_currency: "INR", salary_period: "year", match_highlights: { salary: "meets" } }),
+      listItem({ id: 3, salary_min: 1000000, salary_max: 1400000, salary_currency: "INR", salary_period: "year", match_highlights: { salary: "below" } }),
+    ]} />);
+    expect(screen.getByText("Salary not stated")).toBeInTheDocument();
+    expect(screen.getByText("₹20L–₹30L · meets your minimum")).toBeInTheDocument();
+    expect(screen.getByText("₹10L–₹14L · below your minimum")).toBeInTheDocument();
+  });
+
   it("renders view-specific empty copy", () => {
     renderAt("/", "/", <JobList loading={false} error={null} refetch={() => {}} selectedId={null} onOpen={() => {}} view="saved" items={[]} />);
     expect(screen.getByText(/Jobs you save appear here/)).toBeInTheDocument();

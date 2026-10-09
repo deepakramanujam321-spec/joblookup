@@ -5,6 +5,8 @@ export type WorkflowStatus =
   | "discovered" | "needs_review" | "shortlisted" | "draft_ready" | "applied" | "recruiter_response"
   | "interview" | "offer" | "rejected" | "withdrawn" | "dismissed" | "closed";
 
+export type SalaryStatus = "not_stated" | "meets" | "below" | "stated";
+
 export type VerificationStatus = "unchecked" | "active" | "closed" | "source_unavailable" | "verification_failed";
 
 export interface JobListItem {
@@ -30,7 +32,7 @@ export interface JobListItem {
   listing_quality: string;
   fit_score: number | null;
   priority_score: number | null;
-  match_highlights: { matched_skills?: string[]; gaps?: string[]; confidence?: number; semantic?: boolean } | null;
+  match_highlights: { matched_skills?: string[]; gaps?: string[]; confidence?: number; semantic?: boolean; salary?: SalaryStatus } | null;
   deadline_at: string | null;
   skills: string[];
   workflow_status: WorkflowStatus;

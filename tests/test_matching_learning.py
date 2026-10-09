@@ -72,8 +72,9 @@ def test_excluded_company_zeroes_fit():
 def test_semantic_component_weighted_in():
     low = matching.assess(job(), PROFILE, "", {"score": 10, "rationale": "poor", "strengths": [], "gaps": []})
     high = matching.assess(job(), PROFILE, "", {"score": 95, "rationale": "great", "strengths": [], "gaps": []})
-    # weights renormalise over judged components (compensation + domain unknown here: 0.95 of total)
-    assert high["overall_score"] - low["overall_score"] == pytest.approx(85 * 0.35 / 0.95, abs=0.2)
+    # weights renormalise over judged components (compensation + domain unknown here)
+    known = sum(matching.DEFAULT_WEIGHTS[k] for k in ("semantic", "skills", "role", "location", "seniority"))
+    assert high["overall_score"] - low["overall_score"] == pytest.approx(85 * 0.30 / known, abs=0.2)
 
 
 def test_priority_separates_fit_recency_freshness():

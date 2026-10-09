@@ -19,17 +19,21 @@ from dataclasses import dataclass
 
 from . import normalize
 
-SCORING_VERSION = "v2.0"
+SCORING_VERSION = "v2.1"  # v2.1: stated pay below the minimum caps fit
 
 DEFAULT_WEIGHTS = {
-    "semantic": 0.35,
+    "semantic": 0.30,
     "skills": 0.20,
-    "role": 0.15,
+    "role": 0.10,
     "location": 0.15,
     "seniority": 0.10,
-    "compensation": 0.05,
+    "compensation": 0.10,
     "domain": 0.05,
 }
+# A posting that *states* pay below the candidate's minimum can't be a
+# strong match, whatever else fits: fit is capped here (below the digest
+# and "worth reviewing" thresholds). Unstated pay is never penalised.
+BELOW_SALARY_FLOOR_CAP = 40.0
 
 LABELS = {
     "semantic": "Overall fit (AI read of the full posting)",
@@ -62,6 +66,7 @@ class Component:
     detail: str
     matches: list[str]
     gaps: list[str]
+    blocking: bool = False  # a stated fact that rules the job out (e.g. pay below minimum)
 
     def to_dict(self, name: str, weight: float) -> dict:
         return {
@@ -232,9 +237,21 @@ def score_compensation(job: dict, profile: dict) -> Component:
         high = high * APPROX_TO_INR[job_currency] / APPROX_TO_INR[floor_currency]
         estimated = True
     note = " (estimated using approximate exchange rates)" if estimated else ""
+    stated, minimum = _annual_label(high, floor_currency), _annual_label(floor, floor_currency)
     if high >= floor:
-        return Component(100, f"Stated range reaches your minimum{note}.", ["Meets salary floor"], [])
-    return Component(15, f"Stated range tops out below your minimum{note}.", [], ["Salary below your minimum"])
+        return Component(100, f"Stated pay (up to {stated}) meets your {minimum} minimum{note}.", ["Meets salary floor"], [])
+    # A converted (estimated) figure informs the score but isn't trusted
+    # enough to rule a job out on its own.
+    return Component(
+        15, f"Stated pay tops out at {stated}, below your {minimum} minimum{note}.", [],
+        [f"Pays below your minimum ({stated} vs {minimum})"], blocking=not estimated,
+    )
+
+
+def _annual_label(amount: float, currency: str) -> str:
+    if currency == "INR":
+        return f"₹{amount / 100_000:.1f} LPA".replace(".0 LPA", " LPA")
+    return f"{amount:,.0f} {currency}/yr"
 
 
 # ------------------------------------------------------------------- domain
@@ -294,10 +311,14 @@ def assess(job: dict, profile: dict, resume_text: str, semantic: dict | None = N
     overall = sum(weights[k] * c.score for k, c in known.items()) / known_weight if known_weight else 0.0
 
     blockers = deal_breakers(job, profile)
+    if components["compensation"].blocking:
+        blockers += components["compensation"].gaps
     if any(b.startswith("Excluded company") for b in blockers):
         overall = 0.0
-    elif blockers:
+    elif any(b.startswith("Deal-breaker") for b in blockers):
         overall = min(overall, 25.0)
+    elif components["compensation"].blocking:
+        overall = min(overall, BELOW_SALARY_FLOOR_CAP)
 
     strengths: list[str] = []
     skills = components["skills"]
@@ -317,7 +338,7 @@ def assess(job: dict, profile: dict, resume_text: str, semantic: dict | None = N
         )
     for key in ("role", "seniority", "location", "compensation"):
         c = components[key]
-        if c.score is not None and c.score < 50:
+        if c.score is not None and c.score < 50 and not c.blocking:
             gaps.append(c.detail)
     gaps += [g for g in components["semantic"].gaps if g not in gaps][:3]
 

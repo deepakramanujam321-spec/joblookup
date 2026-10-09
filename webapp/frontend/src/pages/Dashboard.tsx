@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useJobs, useOverview, usePipeline } from "../api/hooks";
-import { Badge, EmptyState, ErrorState, Score, Skeleton, Time } from "../components/ui";
+import { Badge, EmptyState, ErrorState, SalaryBadge, Score, Skeleton, Time } from "../components/ui";
 import { postedLabel, title } from "../lib/format";
 
 export function DashboardPage() {
@@ -52,6 +52,7 @@ export function DashboardPage() {
                     <div className="job-row-title ellipsis">{j.title}</div>
                     <div className="job-row-meta ellipsis">{[j.company, j.location].filter(Boolean).join(" · ")} · {postedLabel(j.posted_at_ts)}</div>
                     {j.summary && <div className="job-row-summary">{j.summary}</div>}
+                    <div className="row wrap" style={{ marginTop: 6, gap: 4 }}><SalaryBadge job={j} /></div>
                   </div>
                 </Link>
               </li>

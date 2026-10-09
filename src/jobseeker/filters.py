@@ -7,8 +7,8 @@ scoring call. When in doubt, let it through.
 
 from __future__ import annotations
 
-import re
 
+from . import normalize
 from .models import JobListing
 
 
@@ -27,18 +27,17 @@ def matches_keywords(listing: JobListing, keywords_any: list[str]) -> bool:
     return any(k.lower() in haystack for k in keywords_any)
 
 
-_SALARY_NUMBER_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(lpa|lakh|l\b)", re.IGNORECASE)
-
-
 def meets_salary_floor(salary_text: str, floor_lpa: float) -> bool:
-    """Only filters out postings that explicitly state a lower figure.
-    No stated salary, or a figure we can't parse, passes through."""
-    if not salary_text:
+    """Only filters out postings that explicitly state a lower figure in
+    rupees ("12 LPA", "₹8-12 lakh", "₹12,00,000 per annum"). No stated
+    salary, another currency, or anything unparseable passes through --
+    scoring handles those (and caps fit for below-minimum pay it can judge)."""
+    if not salary_text or not floor_lpa:
         return True
-    match = _SALARY_NUMBER_RE.search(salary_text)
-    if not match:
+    salary = normalize.parse_salary(salary_text)
+    if not salary or salary["currency"] != "INR":
         return True
-    return float(match.group(1)) >= floor_lpa
+    return normalize.annual_amount(salary["max"], salary["period"]) >= floor_lpa * 100_000
 
 
 def apply_filters(listings: list[JobListing], profile: dict) -> list[JobListing]:

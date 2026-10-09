@@ -34,7 +34,8 @@ CARD_TEMPLATE = """
 <div style="border:1px solid #e3e5e8;border-radius:8px;padding:16px;margin-bottom:14px;">
   <div style="font-size:12px;color:#6b7280;">Fit {fit_score:.0f}/100 &middot; priority {priority:.0f} &middot; {source} &middot; {posted}</div>
   <h3 style="margin:4px 0 2px;"><a href="{url}" style="color:#1a56db;text-decoration:none;">{title}</a></h3>
-  <div style="color:#374151;margin-bottom:8px;">{company} &middot; {location}</div>
+  <div style="color:#374151;margin-bottom:4px;">{company} &middot; {location}</div>
+  <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:{salary_color};">{salary}</div>
   <div style="color:#4b5563;margin-bottom:10px;">{fit_rationale}</div>
   {draft_block}
   {dashboard_link}
@@ -50,6 +51,22 @@ def _posted_label(job: dict) -> str:
     return "posted today" if days < 1 else f"posted {days} day{'s' if days != 1 else ''} ago"
 
 
+SALARY_COLORS = {"meets": "#1f8a4c", "below": "#c92a2a", "not_stated": "#b25e09", "stated": "#374151"}
+
+
+def _salary_line(job: dict) -> tuple[str, str]:
+    status = (job.get("match_highlights") or {}).get("salary") or ("stated" if job.get("salary_text") or job.get("salary_min") else "not_stated")
+    if status == "not_stated":
+        return "Salary not stated", SALARY_COLORS[status]
+    text = job.get("salary_text") or ""
+    if job.get("salary_min") is not None:
+        cur = job.get("salary_currency") or ""
+        lo, hi = float(job["salary_min"]), float(job.get("salary_max") or job["salary_min"])
+        text = f"₹{lo / 1e5:.0f}–{hi / 1e5:.0f} LPA" if cur == "INR" else f"{lo:,.0f}–{hi:,.0f} {cur}"
+    suffix = {"meets": " · meets your minimum", "below": " · below your minimum"}.get(status, "")
+    return f"{text}{suffix}", SALARY_COLORS.get(status, SALARY_COLORS["stated"])
+
+
 def render_digest(rows: list[dict], dashboard_url: str | None) -> str:
     cards = []
     for j in rows:
@@ -62,7 +79,9 @@ def render_digest(rows: list[dict], dashboard_url: str | None) -> str:
             f'<div style="margin-top:10px;font-size:13px;"><a href="{html.escape(dashboard_url.rstrip("/"))}/jobs/{j["id"]}">Open in JobLookup</a></div>'
             if dashboard_url else ""
         )
+        salary, salary_color = _salary_line(j)
         cards.append(CARD_TEMPLATE.format(
+            salary=html.escape(salary), salary_color=salary_color,
             fit_score=float(j.get("fit_score") or 0), priority=float(j.get("priority_score") or j.get("fit_score") or 0),
             source=html.escape(j.get("source", "")), posted=_posted_label(j), url=html.escape(j["url"]),
             title=html.escape(j["title"]), company=html.escape(j.get("company") or ""),

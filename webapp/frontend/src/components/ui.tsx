@@ -1,7 +1,7 @@
 // Small, dependency-free UI primitives shared by every screen.
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "../api/client";
-import { absolute, relative, scoreTone } from "../lib/format";
+import { absolute, relative, salaryLabel, scoreTone } from "../lib/format";
 
 export function Score({ value, label }: { value: number | null | undefined; label?: string }) {
   const tone = scoreTone(value);
@@ -23,6 +23,24 @@ export function Bar({ value }: { value: number | null }) {
 
 export function Badge({ tone = "", children, title }: { tone?: "" | "good" | "warn" | "bad" | "info" | "accent"; children: ReactNode; title?: string }) {
   return <span className={`badge ${tone}`} title={title}>{children}</span>;
+}
+
+type SalaryFields = {
+  salary_min: number | null; salary_max: number | null; salary_currency: string | null; salary_period: string | null;
+  salary_text: string | null; match_highlights: { salary?: string } | null;
+};
+
+/** Pay status, shown first on every job: known or not, and whether it
+ *  clears the minimum in your profile. */
+export function SalaryBadge({ job }: { job: SalaryFields }) {
+  const label = salaryLabel(job);
+  const status = job.match_highlights?.salary ?? (label ? "stated" : "not_stated");
+  if (status === "not_stated" || !label) {
+    return <Badge tone="warn" title="The posting doesn't state compensation. Ask before you invest time.">Salary not stated</Badge>;
+  }
+  if (status === "meets") return <Badge tone="good" title="Stated pay meets the minimum in your profile">{label} · meets your minimum</Badge>;
+  if (status === "below") return <Badge tone="bad" title="Stated pay is below the minimum in your profile">{label} · below your minimum</Badge>;
+  return <Badge title="Stated pay (not compared with your minimum)">{label}</Badge>;
 }
 
 export function Time({ iso, prefix = "", fallback = "—" }: { iso: string | null | undefined; prefix?: string; fallback?: string }) {

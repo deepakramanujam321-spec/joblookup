@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useFacets, useJobs } from "../api/hooks";
 import type { JobListItem } from "../api/types";
-import { Badge, EmptyState, ErrorState, Score, Skeleton } from "../components/ui";
+import { Badge, EmptyState, ErrorState, SalaryBadge, Score, Skeleton } from "../components/ui";
 import { JobDetailView } from "../components/JobDetail";
-import { FRESHNESS_LABELS, SOURCE_LABELS, STATUS_LABELS, listFreshness, postedLabel, relative, salaryLabel, title } from "../lib/format";
+import { FRESHNESS_LABELS, SOURCE_LABELS, STATUS_LABELS, listFreshness, postedLabel, relative, title } from "../lib/format";
 import { activeFilterCount, fromSearchParams, remember, toSearchParams, type JobQuery } from "../lib/filters";
 
 const VIEWS: { value: string; label: string }[] = [
@@ -204,7 +204,6 @@ export function JobList({ items, loading, error, refetch, selectedId, onOpen, vi
 
 function JobRow({ job, selected, onOpen }: { job: JobListItem; selected: boolean; onOpen: (id: number) => void }) {
   const freshness = listFreshness(job);
-  const salary = salaryLabel(job);
   return (
     <li>
       <a href={`/jobs/${job.id}`} data-id={job.id} className="job-row" aria-current={selected}
@@ -216,10 +215,11 @@ function JobRow({ job, selected, onOpen }: { job: JobListItem; selected: boolean
             {job.saved && <span aria-label="Saved" title="Saved">★</span>}
           </div>
           <div className="job-row-meta ellipsis">
-            {[job.company || "Company not stated", job.location || (job.remote_type ? title(job.remote_type) : null), salary].filter(Boolean).join(" · ")}
+            {[job.company || "Company not stated", job.location || (job.remote_type ? title(job.remote_type) : null)].filter(Boolean).join(" · ")}
           </div>
           {job.summary && <div className="job-row-summary">{job.summary}</div>}
           <div className="row wrap" style={{ marginTop: 6, gap: 4 }}>
+            <SalaryBadge job={job} />
             <Badge tone={job.posted_at_ts ? "" : "warn"} title={job.posted_at_ts ? undefined : `Discovered ${relative(job.discovered_at)}`}>
               {postedLabel(job.posted_at_ts)}
             </Badge>
