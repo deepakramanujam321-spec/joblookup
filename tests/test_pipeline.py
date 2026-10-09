@@ -49,7 +49,25 @@ def test_rescore_keeps_previous_ai_read(engine, make_job, monkeypatch):
         before = conn.execute(sa.select(jobs.c.fit_score).where(jobs.c.id == job_id)).scalar()
         pipeline.rescore_all(conn)
         after = conn.execute(sa.select(jobs.c.fit_score, jobs.c.match_highlights).where(jobs.c.id == job_id)).one()
-    assert after.fit_score == before and after.match_highlights["semantic"] is True
+    # the earlier AI read is carried over (score unchanged) but marked as not
+    # current, so the next pipeline run refreshes it
+    assert after.fit_score == before and after.match_highlights["semantic"] is False
+
+
+def test_resume_change_marks_scores_stale_and_refreshes(engine, make_job, monkeypatch):
+    from jobseeker.database import resumes
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    calls = []
+    monkeypatch.setattr(llm, "call_tool", fake_llm(calls))
+    make_job()
+    pipeline.score_pending(engine)
+    assert len(calls) == 1
+    assert pipeline.score_pending(engine)["candidates"] == 0  # nothing stale
+    with engine.begin() as conn:  # a new default resume (e.g. synced from the resume hub)
+        conn.execute(sa.update(resumes).values(extracted_text="Python FastAPI PostgreSQL engineer, new resume text"))
+    stats = pipeline.score_pending(engine)
+    assert stats["candidates"] == 1 and len(calls) == 2  # re-scored against the new resume
 
 
 def test_deterministic_only_without_provider(engine, make_job):

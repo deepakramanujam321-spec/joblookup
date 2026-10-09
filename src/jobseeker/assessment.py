@@ -194,9 +194,12 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
         "matched_skills": result["components"]["skills"]["matches"][:6],
         "gaps": result["gaps"][:3],
         "confidence": result.get("confidence"),
-        # False = deterministic-only; the pipeline retries the semantic read later.
-        "semantic": result["components"]["semantic"]["score"] is not None,
+        # True only when the AI read reflects *current* inputs (fresh call, or
+        # a cache hit on the full input hash). A carried-over read from an
+        # older resume/profile counts as False, so the pipeline refreshes it.
+        "semantic": llm_called or (bool(cached) and run_llm and cached["llm_score"] is not None),
         "salary": salary_status(job, result["components"]["compensation"]),
+        "inputs": scoring_inputs(profile_record["version"], resume_text),
     }
     conn.execute(
         sa.update(jobs).where(jobs.c.id == job["id"]).values(
@@ -207,6 +210,15 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
     candidate_skills = matching.candidate_skill_set(profile, resume_text)
     persist_priority(conn, job, result["overall_score"], profile, candidate_skills, learned, now)
     return {"assessment": result, "draft": draft, "llm_called": llm_called, "cached": bool(cached)}
+
+
+def scoring_inputs(profile_version: int, resume_text: str) -> dict:
+    """What a score was computed against; a change marks the score stale."""
+    return {
+        "profile_version": profile_version,
+        "resume_sha": hashlib.sha256(resume_text.encode()).hexdigest()[:16],
+        "scoring_version": matching.SCORING_VERSION,
+    }
 
 
 def salary_status(job: dict, compensation: dict) -> str:

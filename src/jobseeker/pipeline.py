@@ -24,14 +24,18 @@ DEFAULT_LLM_BUDGET = int(os.environ.get("MAX_LLM_CALLS_PER_RUN", "60"))
 DIGEST_THRESHOLD = assessment.DRAFT_THRESHOLD
 
 
-def _needs_scoring():
+def _needs_scoring(inputs: dict):
     no_semantic = sa.func.coalesce(jobs.c.match_highlights["semantic"].as_boolean(), False).is_(False)
+    scored_with = jobs.c.match_highlights["inputs"]
     return sa.and_(
         jobs.c.listing_quality == "ok",
         sa.or_(
             jobs.c.status == "new",
             jobs.c.fit_score.is_(None),
             jobs.c.scoring_version.is_distinct_from(matching.SCORING_VERSION),
+            # scored against an older resume or profile -> stale
+            scored_with["resume_sha"].as_string().is_distinct_from(inputs["resume_sha"]),
+            scored_with["profile_version"].as_integer().is_distinct_from(inputs["profile_version"]),
             # deterministic-only rows retry the semantic read while still fresh
             sa.and_(no_semantic, jobs.c.verification_status != "closed",
                     jobs.c.discovered_at > sa.func.now() - sa.text("interval '30 days'")),
@@ -45,7 +49,9 @@ def score_pending(engine: Engine, owner: str = profile_mod.DEFAULT_OWNER, llm_bu
         record = profile_mod.get_or_seed(conn, owner)
         resume_id, resume = profile_mod.default_resume_text(conn, owner)
         learned = assessment.load_learned(conn, owner)
-        candidates = [dict(r) for r in conn.execute(sa.select(jobs).where(_needs_scoring()).order_by(jobs.c.id).limit(limit)).mappings()]
+        inputs = assessment.scoring_inputs(record["version"], resume)
+        candidates = [dict(r) for r in conn.execute(
+            sa.select(jobs).where(_needs_scoring(inputs)).order_by(jobs.c.id).limit(limit)).mappings()]
     profile = record["data"]
     evidence = profile_mod.evidence_text(profile, resume)
     model = llm.resolve_model() if llm.is_configured() else None
