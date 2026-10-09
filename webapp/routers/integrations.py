@@ -13,7 +13,8 @@ from auth import CurrentUser
 from deps import engine, limiter
 from jobseeker import documents, google, normalize
 from jobseeker.database import knowledge_documents, resumes
-from routers.profile import _owned_resume, _public, store_resume
+from jobseeker.resume_hub import store_resume
+from routers.profile import _owned_resume, _public
 from schemas import DriveImport
 
 router = APIRouter(prefix="/api/v2", tags=["integrations"])

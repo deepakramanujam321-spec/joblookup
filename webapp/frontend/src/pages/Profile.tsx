@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useProfile, useResumeMutations, useResumes, useSaveProfile } from "../api/hooks";
+import { useProfile, useResumeHub, useResumeMutations, useResumes, useSaveProfile, useSyncResumeHub } from "../api/hooks";
 import type { LocationPreference, ProfileData, Resume } from "../api/types";
 import { Badge, EmptyState, ErrorState, ListInput, Modal, Skeleton, Time, errorMessage, useConfirm, useToast } from "../components/ui";
 import { title } from "../lib/format";
@@ -161,6 +161,7 @@ export function ProfilePage() {
           </div>
         </div>
         <div className="stack">
+          <ResumeHubPanel />
           <ResumesPanel />
           {data.evidence_sources.length > 0 && (
             <section className="card card-pad stack tight">
@@ -278,6 +279,55 @@ function SkillsEditor({ data, set }: { data: ProfileData; set: <K extends keyof 
         <button className="btn" onClick={add}>Add</button></div>
       <p className="hint">Skills marked “resume” were found in your resume. Matching never credits a skill that isn't here or in your resume.</p>
     </div>
+  );
+}
+
+// ------------------------------------------------------------- resume hub
+
+function ResumeHubPanel() {
+  const profile = useProfile();
+  const save = useSaveProfile();
+  const hub = useResumeHub();
+  const sync = useSyncResumeHub();
+  const toast = useToast();
+  const saved = profile.data?.data.resume_folder_url ?? "";
+  const [url, setUrl] = useState(saved);
+  useEffect(() => setUrl(saved), [saved]);
+  const last = hub.data?.last_sync;
+
+  const runSync = () => sync.mutate(undefined, {
+    onSuccess: (r) => toast(`Synced: ${r.imported.length} new, ${r.updated.length} updated, ${r.unchanged.length} unchanged${r.failed.length ? `, ${r.failed.length} failed` : ""}`, r.failed.length ? "error" : "info"),
+    onError: (e) => toast(errorMessage(e), "error"),
+  });
+  const saveAndSync = () => {
+    if (!profile.data) return;
+    save.mutate({ data: { ...profile.data.data, resume_folder_url: url.trim() || null }, additional_info: profile.data.additional_info, version: profile.data.version }, {
+      onSuccess: () => (url.trim() ? runSync() : toast("Resume hub removed")),
+      onError: (e) => toast(errorMessage(e), "error"),
+    });
+  };
+
+  return (
+    <section className="card card-pad stack tight" aria-label="Resume hub">
+      <h2>Resume hub</h2>
+      <p className="small muted">A Google Drive folder shared as “Anyone with the link can view”. New and edited files there are pulled in automatically every weekday (edits become new versions; resumes you delete here stay deleted).</p>
+      <div className="row">
+        <label className="sr-only" htmlFor="hub-url">Drive folder link</label>
+        <input id="hub-url" className="input grow" placeholder="https://drive.google.com/drive/folders/…" value={url} onChange={(e) => setUrl(e.target.value)} />
+        {url.trim() !== saved
+          ? <button className="btn primary" disabled={save.isPending || sync.isPending} onClick={saveAndSync}>Save & sync</button>
+          : <button className="btn" disabled={!saved || sync.isPending} onClick={runSync}>{sync.isPending ? "Syncing…" : "Sync now"}</button>}
+      </div>
+      {last && (
+        <div className="small">
+          <span className="muted">Last sync <Time iso={last.synced_at} />: </span>
+          {last.imported.length} new · {last.updated.length} updated · {last.unchanged.length} unchanged
+          {last.default_set_to && <div>Default resume set to <strong>{last.default_set_to}</strong></div>}
+          {last.failed.length > 0 && <ul className="bullets" style={{ color: "var(--bad)" }}>{last.failed.map((f) => <li key={f}>{f}</li>)}</ul>}
+          {last.skipped.length > 0 && <div className="muted">Skipped: {last.skipped.join("; ")}</div>}
+        </div>
+      )}
+    </section>
   );
 }
 

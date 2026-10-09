@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
@@ -10,7 +9,8 @@ from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
 
 from auth import CurrentUser
 from deps import engine, limiter
-from jobseeker import documents, llm, pipeline, profile as profile_mod
+from jobseeker import documents, llm, pipeline, profile as profile_mod, resume_hub
+from jobseeker.resume_hub import store_resume
 from jobseeker.database import resumes
 from jobseeker.profile import CandidateProfile
 from schemas import ProfileUpdate, ResumeApply, ResumeUpdate
@@ -62,40 +62,29 @@ def list_resumes(user: CurrentUser):
     return {"items": [dict(r) for r in rows], "max_bytes": documents.MAX_UPLOAD_BYTES, "llm_configured": llm.is_configured()}
 
 
-def store_resume(conn, account: str, data: bytes, filename: str, display_name: str, purpose: str | None,
-                 make_default: bool, replaces_id: int | None = None, source: str = "upload",
-                 drive_file_id: str | None = None, drive_modified_time=None) -> int:
-    """Validates, stores privately, extracts text. Never overwrites: a new
-    upload of an existing resume becomes a new version row."""
-    content_type = documents.detect_type(data, filename)
-    try:
-        text, status, error = documents.extract_text(data, content_type), "done", None
-    except documents.InvalidDocument as e:
-        text, status, error = None, "failed", str(e)
-    version = 1
-    if replaces_id is not None:
-        previous = _owned_resume(conn, account, replaces_id)
-        version = previous.version + 1
-        display_name = display_name or previous.display_name
-        purpose = purpose if purpose is not None else previous.purpose
-    display_name = display_name or filename
-    key = f"{account}/resumes/{uuid.uuid4().hex}{_extension(content_type)}"
-    documents.put_file(conn, key, account, data, content_type)
-    has_default = conn.execute(sa.select(resumes.c.id).where(
-        resumes.c.owner == account, resumes.c.is_default.is_(True), resumes.c.deleted_at.is_(None))).first()
-    make_default = make_default or has_default is None
-    if make_default:
-        conn.execute(sa.update(resumes).where(resumes.c.owner == account).values(is_default=False))
-    return conn.execute(sa.insert(resumes).values(
-        owner=account, display_name=display_name[:200], purpose=purpose, version=version,
-        filename=filename[:255], content_type=content_type, size_bytes=len(data), sha256=documents.sha256(data),
-        storage_key=key, source=source, drive_file_id=drive_file_id, drive_modified_time=drive_modified_time,
-        is_default=make_default, extraction_status=status, extraction_error=error, extracted_text=text,
-    ).returning(resumes.c.id)).scalar_one()
+@router.get("/resumes/hub")
+def hub_status(user: CurrentUser):
+    with engine().begin() as conn:
+        record = profile_mod.get_or_seed(conn, user.account)
+        return {"folder_url": record["data"].get("resume_folder_url"), "last_sync": resume_hub.last_sync(conn, user.account)}
 
 
-def _extension(content_type: str) -> str:
-    return {documents.PDF: ".pdf", documents.DOCX: ".docx", documents.TEXT: ".txt"}.get(content_type, "")
+@router.post("/resumes/hub/sync")
+def hub_sync(user: CurrentUser):
+    """Pull new/changed resumes from the Drive folder set on the profile."""
+    limiter.check(user.account, "resume hub sync", 6)
+    with engine().begin() as conn:
+        record = profile_mod.get_or_seed(conn, user.account)
+        url = record["data"].get("resume_folder_url")
+        if not url:
+            raise HTTPException(422, "Add your resume folder link on the Profile page first.")
+        try:
+            result = resume_hub.sync(conn, user.account, url)
+        except resume_hub.HubError as e:
+            raise HTTPException(422, str(e)) from e
+        except Exception as e:  # network/Drive failure: say so, keep existing resumes
+            raise HTTPException(502, f"Couldn't reach Google Drive: {type(e).__name__}") from e
+    return result.as_dict()
 
 
 @router.post("/resumes", status_code=201)

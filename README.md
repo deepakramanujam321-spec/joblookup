@@ -21,7 +21,7 @@ say so.
 | **Feedback learning** | Structured feedback ("wrong seniority", "excellent match", …) adjusts ranking per attribute, after ≥2 consistent signals; explicit profile preferences always win; every learned preference is visible, switchable and resettable; improvement is measured (leave-one-out AUC). |
 | **Applications** | Lifecycle (needs review → shortlisted → draft ready → applied → recruiter response → interview → offer / rejected / withdrawn), notes, recruiter details, interviews & reminders, full audit trail. Contradictory moves are refused. |
 | **Drafts** | Email + optional cover letter + answers to application questions, from the selected resume. Every generation and every edit is a new immutable version. Missing information is flagged instead of invented. |
-| **Profile & resumes** | Structured profile (experience, skills with provenance, projects, preferences, exclusions, free-text notes for the agent), multiple resumes with versions (PDF/DOCX), stored privately in the same database. Extraction proposes; you choose what to apply. |
+| **Profile & resumes** | Structured profile (experience, skills with provenance, projects, preferences, exclusions, free-text notes for the agent), multiple resumes with versions (PDF/DOCX), stored privately in the same database. Extraction proposes; you choose what to apply. **Resume hub:** point the profile at a Drive folder shared "anyone with the link" and new/edited files sync in every weekday (and on demand). |
 | **Google (optional)** | Gmail: save drafts (`gmail.compose` only, so no inbox reading and no sending). Drive: import files you pick in Google's Picker (`drive.file` only). |
 
 ## Architecture

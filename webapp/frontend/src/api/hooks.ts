@@ -200,6 +200,22 @@ export function useResumeMutations() {
   };
 }
 
+export interface HubSync { imported: string[]; updated: string[]; unchanged: string[]; skipped: string[]; failed: string[]; default_set_to: string | null; synced_at?: string }
+
+export const useResumeHub = () =>
+  useQuery({ queryKey: ["resume-hub"], queryFn: () => api.get<{ folder_url: string | null; last_sync: HubSync | null }>("/api/v2/resumes/hub") });
+
+export function useSyncResumeHub() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<HubSync>("/api/v2/resumes/hub/sync"),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["resume-hub"] });
+      qc.invalidateQueries({ queryKey: keys.resumes });
+    },
+  });
+}
+
 export const useIntegrations = () => useQuery({ queryKey: keys.integrations, queryFn: () => api.get<IntegrationStatus>("/api/v2/integrations") });
 export const useKnowledge = () => useQuery({ queryKey: keys.knowledge, queryFn: () => api.get<{ items: KnowledgeDoc[] }>("/api/v2/knowledge") });
 

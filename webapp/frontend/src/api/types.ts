@@ -239,6 +239,7 @@ export interface ProfileData {
   work_authorization: string | null;
   thresholds: Thresholds;
   weights: Record<string, number>;
+  resume_folder_url: string | null;
   evidence_sources: { type: string; resume_id?: number; name: string; version?: number; sections: string[]; applied_at: string }[];
 }
 

@@ -28,6 +28,8 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Sync resumes from the resume hub folder
+        run: python scripts/sync_resumes.py
       - name: Enrich and score
         run: python scripts/run_enrich.py --llm-budget "${{ inputs.llm_budget }}"
         env:

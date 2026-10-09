@@ -109,6 +109,7 @@ class CandidateProfile(BaseModel):
     thresholds: Thresholds = Field(default_factory=Thresholds)
     weights: dict[str, float] = Field(default_factory=dict)  # optional overrides of matching.DEFAULT_WEIGHTS
     evidence_sources: list[dict] = Field(default_factory=list)  # which documents informed which sections
+    resume_folder_url: str | None = None  # Drive folder shared "anyone with the link": the resume hub
 
 
 _INDIAN_CITIES = ["bengaluru", "bangalore", "hyderabad", "mumbai", "pune", "chennai", "delhi", "ncr",
