@@ -28,7 +28,10 @@ if not database_url:
         "SUPABASE_SERVICE_ROLE_KEY the app uses at runtime for REST calls. "
         "See db/README.md."
     )
-config.set_main_option("sqlalchemy.url", database_url)
+# Escape % for configparser: URL-encoded passwords (e.g. %40 for "@")
+# otherwise crash with "invalid interpolation syntax".
+database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1).replace("postgres://", "postgresql+psycopg://", 1)
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 target_metadata = None
 TARGET_SCHEMA = "jobseeker"
@@ -53,7 +56,15 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
+        # The version table lives in this schema, so it has to exist before
+        # Alembic looks for that table -- on a brand-new database (anyone
+        # reusing this repo) it doesn't yet, and 0001 never gets to run.
+        connection.execute(text(f"create schema if not exists {TARGET_SCHEMA}"))
         connection.execute(text(f"set search_path to {TARGET_SCHEMA}, public"))
+        # Commit that autobegun transaction: otherwise begin_transaction()
+        # below joins it instead of owning it, and every migration is
+        # silently rolled back when the connection closes.
+        connection.commit()
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

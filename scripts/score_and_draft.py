@@ -1,195 +1,82 @@
 #!/usr/bin/env python3
-"""Scores every newly-collected job against the resume, and drafts an
-outreach note for the strong matches. This is the one step in the pipeline
-that calls an LLM — everything else (scraping, filtering, sending) is
-plain deterministic code.
+"""Stores the collected listings and scores everything that needs it.
 
-Provider-agnostic via LiteLLM: swap LLM_MODEL to any provider/model LiteLLM
-supports ("anthropic/claude-sonnet-5", "openai/gpt-4o-mini",
-"gemini/gemini-2.0-flash", "groq/llama-3.3-70b-versatile", ...) and set that
-provider's API key env var — no code changes. See README.md for the
-model-string-to-env-var mapping.
+Steps (one recorded `collect` run, visible in the dashboard's pipeline
+health -- including when a step fails):
+  1. ingest: normalize + dedupe + store (src/jobseeker/ingest.py)
+  2. enrich: official ATS API data for rows that don't have it yet, which
+     also verifies they're still open (src/jobseeker/verification.py)
+  3. score: explainable fit breakdown for every new/changed job, with the
+     one paid step -- the semantic LLM read -- budgeted per run
+     (src/jobseeker/pipeline.py), drafting a note for strong matches
 
-If LLM_MODEL isn't set, the model is auto-detected from whichever provider
-key actually has a value (see PROVIDER_AUTODETECT below) -- setting
-ANTHROPIC_API_KEY or OPENAI_API_KEY alone is enough to get going, no second
-"now tell me which one to use" secret required.
+Provider-agnostic via LiteLLM: set ONE provider key (OPENAI_API_KEY, ...)
+or LLM_MODEL explicitly. Without any key, scoring still runs on the
+deterministic signals alone.
 
 Usage:
     python scripts/run_collect.py --output jobs.json
     python scripts/score_and_draft.py --jobs-file jobs.json
 
-Requires SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and at least one provider
-API key (LLM_MODEL optional -- only needed to pick between multiple, or to
-use a model not in the autodetect list below).
+Requires DATABASE_URL.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import litellm
-
-from jobseeker import config
-from jobseeker.models import JobListing
-from jobseeker.storage import SupabaseStore
-
-# Checked in order if LLM_MODEL isn't set explicitly -- first provider key
-# with a real value wins.
-PROVIDER_AUTODETECT = [
-    ("ANTHROPIC_API_KEY", "anthropic/claude-sonnet-5"),
-    ("OPENAI_API_KEY", "openai/gpt-4o-mini"),
-    ("GEMINI_API_KEY", "gemini/gemini-2.0-flash"),
-    ("GROQ_API_KEY", "groq/llama-3.3-70b-versatile"),
-]
-FIT_SCORE_THRESHOLD = 70
-MAX_JOBS_PER_RUN = 50  # cost/time ceiling in case a run surfaces an unusual flood of results
+from jobseeker import ingest, pipeline, runs, verification  # noqa: E402
+from jobseeker.database import get_engine  # noqa: E402
+from jobseeker.models import JobListing  # noqa: E402
 
 
-def resolve_model() -> str:
-    explicit = os.environ.get("LLM_MODEL")
-    if explicit:
-        return explicit
-    for key_name, model in PROVIDER_AUTODETECT:
-        if os.environ.get(key_name):
-            return model
-    raise RuntimeError(
-        "No LLM_MODEL set and no known provider API key found (checked "
-        f"{[k for k, _ in PROVIDER_AUTODETECT]}). Set LLM_MODEL plus that "
-        "provider's key -- see README.md."
-    )
-
-ASSESSMENT_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "submit_job_assessment",
-        "description": "Submit the fit assessment for this job posting.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "fit_score": {
-                    "type": "number",
-                    "description": "0-100 fit score for this specific candidate and this specific posting.",
-                },
-                "fit_rationale": {
-                    "type": "string",
-                    "description": "1-2 sentences, specific to this posting (not generic boilerplate).",
-                },
-                "outreach_draft": {
-                    "type": ["string", "null"],
-                    "description": (
-                        "A short outreach/application note in the candidate's voice, 3-5 sentences: "
-                        "why this role fits the candidate's experience (per the resume below), one "
-                        "concrete anchor story from the resume relevant to THIS posting, a clear ask "
-                        "to move forward. Required if fit_score >= 70, otherwise null."
-                    ),
-                },
-            },
-            "required": ["fit_score", "fit_rationale", "outreach_draft"],
-        },
-    },
-}
-
-
-def build_prompt(job: dict, resume_text: str, profile: dict) -> str:
-    location_pref = profile["location_preference"]
-    salary_floor = profile["salary_floor_lpa"]
-    return f"""You are assessing a job posting's fit for a specific candidate, for a job-search
-assistant that scores postings so only strong matches reach the candidate's weekly digest.
-
-CANDIDATE RESUME:
-{resume_text}
-
-CANDIDATE'S STATED PRIORITIES:
-- Location preference, most to least preferred: {", ".join(location_pref)}
-- Salary floor: {salary_floor} LPA (only penalize if the posting states a lower figure explicitly)
-
-JOB POSTING:
-Title: {job['title']}
-Company: {job['company']}
-Location: {job.get('location') or 'not stated'}
-Remote type: {job.get('remote_type') or 'not stated'}
-Salary: {job.get('salary_text') or 'not stated'}
-Source: {job['source']}
-URL: {job['url']}
-
-Description:
-{(job.get('description') or '')[:3000]}
-
-Score this posting's fit for this candidate, 0-100, based on the ACTUAL experience and
-skills in the resume above — don't invent generic strengths not demonstrated there. Weigh
-location against the candidate's stated priority order and apply the salary floor only when
-a figure is actually given. Call submit_job_assessment with your result."""
-
-
-def assess_job(model: str, job: dict, resume_text: str, profile: dict) -> dict:
-    resp = litellm.completion(
-        model=model,
-        max_tokens=1024,
-        tools=[ASSESSMENT_TOOL],
-        tool_choice={"type": "function", "function": {"name": "submit_job_assessment"}},
-        messages=[{"role": "user", "content": build_prompt(job, resume_text, profile)}],
-    )
-    tool_call = resp.choices[0].message.tool_calls[0]
-    return json.loads(tool_call.function.arguments)
+def load_collect_output(path: str) -> dict:
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(raw, list):  # v1 collect output: a bare list of listings
+        raw = {"listings": raw, "source_stats": {}}
+    raw["listings"] = [JobListing.from_dict(row) for row in raw.get("listings", [])]
+    return raw
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jobs-file", required=True, help="JSON output of run_collect.py")
+    parser.add_argument("--llm-budget", type=int, default=pipeline.DEFAULT_LLM_BUDGET)
     args = parser.parse_args()
 
-    profile = config.load_profile()
-    resume_text = config.load_resume_text(profile)
-    model = resolve_model()
+    engine = get_engine()
+    collected = load_collect_output(args.jobs_file)
+    with runs.recorded(engine, "collect") as rec:
+        for name, stat in (collected.get("source_stats") or {}).items():
+            rec.source(name, stat.get("found", 0), stat.get("error"))
 
-    supabase_url = config.require_env("SUPABASE_URL")
-    supabase_key = config.require_env("SUPABASE_SERVICE_ROLE_KEY")
-    store = SupabaseStore(supabase_url, supabase_key)
+        with engine.begin() as conn:
+            stats = ingest.upsert_listings(conn, collected["listings"])
+        rec.values.update(
+            jobs_found=collected.get("raw_count", stats.found),
+            jobs_new=stats.new,
+            jobs_duplicate=stats.seen_again + stats.merged_duplicates + collected.get("in_run_duplicates", 0),
+            jobs_rejected=stats.rejected + collected.get("filtered_out", 0),
+        )
+        print(f"[score_and_draft] ingest: {stats}", file=sys.stderr)
 
-    raw = json.loads(Path(args.jobs_file).read_text(encoding="utf-8"))
-    listings = [JobListing(**row) for row in raw]
-    inserted = store.insert_new_jobs(listings)
-    print(f"[score_and_draft] {len(listings)} candidates found, {inserted} new", file=sys.stderr)
+        enrich_stats = verification.enrich_pending(engine)
+        print(f"[score_and_draft] enrich: {enrich_stats}", file=sys.stderr)
 
-    pending = store.list_jobs("new")[:MAX_JOBS_PER_RUN]
-    print(f"[score_and_draft] scoring {len(pending)} pending job(s) with {model}...", file=sys.stderr)
-
-    queued_count = 0
-    error = ""
-    try:
-        for job in pending:
-            assessment = assess_job(model, job, resume_text, profile)
-            fit_score = assessment["fit_score"]
-            fields = {
-                "fit_score": fit_score,
-                "fit_rationale": assessment["fit_rationale"],
-            }
-            if fit_score >= FIT_SCORE_THRESHOLD:
-                fields["status"] = "queued_for_digest"
-                fields["outreach_draft"] = assessment["outreach_draft"]
-                queued_count += 1
-            else:
-                fields["status"] = "scored"
-            store.update_job(job["id"], fields)
-            time.sleep(0.5)  # stay comfortably under rate limits
-    except Exception as e:
-        error = str(e)
-        print(f"[score_and_draft] stopped early: {error}", file=sys.stderr)
-
-    store.log_run("collect", jobs_found=len(listings), jobs_new=inserted, error=error)
-    print(
-        f"[score_and_draft] done: {len(listings)} found, {inserted} new, {queued_count} queued for digest",
-        file=sys.stderr,
-    )
-    return 1 if error else 0
+        score_stats = pipeline.score_pending(engine, llm_budget=args.llm_budget)
+        rec.values["jobs_updated"] = score_stats["candidates"]
+        print(f"[score_and_draft] score: {score_stats}", file=sys.stderr)
+        rec.details = {
+            "ingest": {"new": stats.new, "seen_again": stats.seen_again, "merged_duplicates": stats.merged_duplicates,
+                       "rejected": stats.rejected, "rejected_reasons": stats.rejected_reasons},
+            "enrich": enrich_stats, "score": score_stats,
+        }
+    return 0
 
 
 if __name__ == "__main__":

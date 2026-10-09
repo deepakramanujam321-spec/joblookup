@@ -2,7 +2,7 @@
 """Mechanical collection step: fetch candidate jobs from every enabled
 source, apply the deterministic filters, dedupe, and write JSON.
 
-Deliberately does NOT talk to Supabase or an LLM — this script's only job is
+Deliberately does NOT talk to the database or an LLM — this script's only job is
 "find candidate postings, reliably, and hand them off as data". The calling
 workflow (see README.md) reads this output and does fit-scoring itself.
 
@@ -32,6 +32,19 @@ from jobseeker import config, sources
 from jobseeker.filters import apply_filters, dedupe_by_url
 
 
+def _collect(name: str, fn, source_stats: dict) -> list:
+    """Each source is isolated: one failing never takes the run down, and
+    its failure is recorded so pipeline health can say which one broke."""
+    try:
+        found = fn()
+        source_stats[name] = {"found": len(found), "error": None}
+        return found
+    except Exception as e:
+        print(f"[run_collect] {name} failed: {e}", file=sys.stderr)
+        source_stats[name] = {"found": 0, "error": f"{type(e).__name__}: {e}"[:300]}
+        return []
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pretty", action="store_true")
@@ -43,20 +56,21 @@ def main() -> int:
     enabled = profile["sources"]
 
     all_listings = []
+    source_stats: dict = {}
 
     if enabled.get("ats_boards"):
         print("[run_collect] discovering ATS board postings...", file=sys.stderr)
-        all_listings += sources.discover_ats_boards(profile, brave_api_key)
+        all_listings += _collect("ats_boards", lambda: sources.discover_ats_boards(profile, brave_api_key), source_stats)
 
     if enabled.get("remote_boards"):
         print("[run_collect] fetching RemoteOK...", file=sys.stderr)
-        all_listings += sources.fetch_remoteok(profile)
+        all_listings += _collect("remoteok", lambda: sources.fetch_remoteok(profile), source_stats)
         print("[run_collect] fetching WeWorkRemotely...", file=sys.stderr)
-        all_listings += sources.fetch_weworkremotely(profile)
+        all_listings += _collect("weworkremotely", lambda: sources.fetch_weworkremotely(profile), source_stats)
 
     if enabled.get("linkedin_indeed"):
         print("[run_collect] discovering LinkedIn/Indeed (best-effort)...", file=sys.stderr)
-        all_listings += sources.discover_linkedin_indeed(profile, brave_api_key)
+        all_listings += _collect("linkedin_indeed", lambda: sources.discover_linkedin_indeed(profile, brave_api_key), source_stats)
 
     print(f"[run_collect] {len(all_listings)} raw candidates before filtering", file=sys.stderr)
 
@@ -65,13 +79,19 @@ def main() -> int:
 
     print(f"[run_collect] {len(deduped)} candidates after filtering + dedupe", file=sys.stderr)
 
-    payload = [listing.to_dict() for listing in deduped]
+    payload = {
+        "listings": [listing.to_dict() for listing in deduped],
+        "source_stats": source_stats,
+        "raw_count": len(all_listings),
+        "filtered_out": len(all_listings) - len(filtered),
+        "in_run_duplicates": len(filtered) - len(deduped),
+    }
     indent = 2 if args.pretty else None
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=indent)
+            json.dump(payload, f, indent=indent, default=str)
     else:
-        json.dump(payload, sys.stdout, indent=indent)
+        json.dump(payload, sys.stdout, indent=indent, default=str)
         print()
     return 0
 
