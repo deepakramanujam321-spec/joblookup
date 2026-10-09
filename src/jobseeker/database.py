@@ -163,6 +163,16 @@ resumes = sa.Table(
     sa.Column("deleted_at", TS),
 )
 
+document_blobs = sa.Table(
+    "document_blobs", metadata,
+    sa.Column("key", sa.Text, primary_key=True),
+    sa.Column("owner", sa.Text, nullable=False),
+    sa.Column("content_type", sa.Text, nullable=False),
+    sa.Column("size_bytes", sa.Integer, nullable=False),
+    sa.Column("content", sa.LargeBinary, nullable=False),
+    sa.Column("created_at", TS, nullable=False),
+)
+
 knowledge_documents = sa.Table(
     "knowledge_documents", metadata,
     _id(),

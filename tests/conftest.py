@@ -72,10 +72,8 @@ def engine(database_url):
 @pytest.fixture(autouse=True)
 def _isolated_env(monkeypatch, tmp_path):
     for key in ("LLM_MODEL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY",
-                "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"):
+                "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "DASHBOARD_URL"):
         monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("FILE_STORAGE", "local")
-    monkeypatch.setenv("FILE_STORAGE_DIR", str(tmp_path / "files"))
     monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", "test-key")
 
 

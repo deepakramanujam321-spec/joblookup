@@ -6,26 +6,24 @@ the browser's Content-Type), size is capped, DOCX archives are checked for
 the expected structure and for zip bombs, and extracted text is only ever
 passed to the model inside an untrusted-document block.
 
-Storage sits behind FileStorage so the backend can change without touching
-callers. Production uses a *private* Supabase Storage bucket (no new
-service or cost: the project already exists, free tier includes 1 GB);
-local development/tests use a directory. Files are never served from a
-public URL -- downloads stream through the authenticated API.
+File bytes live in Postgres (jobseeker.document_blobs), written in the
+same transaction as the resume row that references them -- no second
+storage service, no second set of credentials, no orphaned uploads. Files
+are never served from a public URL; downloads go through the authenticated
+API.
 """
 
 from __future__ import annotations
 
 import hashlib
 import io
-import os
 import re
 import zipfile
-from pathlib import Path
-from typing import Protocol
 
-import requests
+import sqlalchemy as sa
 
 from . import llm, normalize
+from .database import document_blobs
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_DOCX_UNCOMPRESSED = 30 * 1024 * 1024
@@ -100,86 +98,18 @@ def sha256(data: bytes) -> str:
 # ------------------------------------------------------------------ storage
 
 
-class FileStorage(Protocol):
-    def put(self, key: str, data: bytes, content_type: str) -> None: ...
-    def get(self, key: str) -> bytes: ...
-    def delete(self, key: str) -> None: ...
+def put_file(conn, key: str, owner: str, data: bytes, content_type: str) -> None:
+    conn.execute(sa.insert(document_blobs).values(
+        key=key, owner=owner, content=data, content_type=content_type, size_bytes=len(data)))
 
 
-class LocalFileStorage:
-    def __init__(self, root: str | Path):
-        self.root = Path(root)
-        self.root.mkdir(parents=True, exist_ok=True)
-
-    def _path(self, key: str) -> Path:
-        path = (self.root / key).resolve()
-        if self.root.resolve() not in path.parents:
-            raise ValueError("invalid storage key")
-        return path
-
-    def put(self, key: str, data: bytes, content_type: str) -> None:
-        path = self._path(key)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
-
-    def get(self, key: str) -> bytes:
-        return self._path(key).read_bytes()
-
-    def delete(self, key: str) -> None:
-        self._path(key).unlink(missing_ok=True)
+def get_file(conn, key: str, owner: str) -> bytes | None:
+    return conn.execute(sa.select(document_blobs.c.content).where(
+        document_blobs.c.key == key, document_blobs.c.owner == owner)).scalar()
 
 
-class SupabaseFileStorage:
-    """Private bucket via the Storage REST API, using the server-side
-    service-role key. Bucket is created private on first use."""
-
-    def __init__(self, url: str, service_key: str, bucket: str = "jobseeker-documents"):
-        self.base = f"{url.rstrip('/')}/storage/v1"
-        self.bucket = bucket
-        self.headers = {"Authorization": f"Bearer {service_key}", "apikey": service_key}
-        self._bucket_ready = False
-
-    def _ensure_bucket(self) -> None:
-        if self._bucket_ready:
-            return
-        resp = requests.get(f"{self.base}/bucket/{self.bucket}", headers=self.headers, timeout=15)
-        if resp.status_code != 200:
-            create = requests.post(
-                f"{self.base}/bucket", headers=self.headers, timeout=15,
-                json={"id": self.bucket, "name": self.bucket, "public": False, "file_size_limit": MAX_UPLOAD_BYTES},
-            )
-            if create.status_code not in (200, 201) and "already exists" not in create.text.lower():
-                create.raise_for_status()
-        self._bucket_ready = True
-
-    def put(self, key: str, data: bytes, content_type: str) -> None:
-        self._ensure_bucket()
-        resp = requests.post(
-            f"{self.base}/object/{self.bucket}/{key}",
-            headers={**self.headers, "Content-Type": content_type, "x-upsert": "false"},
-            data=data, timeout=60,
-        )
-        resp.raise_for_status()
-
-    def get(self, key: str) -> bytes:
-        resp = requests.get(f"{self.base}/object/authenticated/{self.bucket}/{key}", headers=self.headers, timeout=60)
-        resp.raise_for_status()
-        return resp.content
-
-    def delete(self, key: str) -> None:
-        resp = requests.delete(f"{self.base}/object/{self.bucket}", headers=self.headers, json={"prefixes": [key]}, timeout=15)
-        if resp.status_code not in (200, 404):
-            resp.raise_for_status()
-
-
-def storage_from_env() -> FileStorage:
-    kind = os.environ.get("FILE_STORAGE", "").lower()
-    url, key = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    if kind == "supabase" or (not kind and url and key):
-        if not (url and key):
-            raise RuntimeError("FILE_STORAGE=supabase needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.")
-        return SupabaseFileStorage(url, key)
-    return LocalFileStorage(os.environ.get("FILE_STORAGE_DIR", Path(__file__).resolve().parents[2] / "data" / "files"))
+def delete_file(conn, key: str, owner: str) -> None:
+    conn.execute(sa.delete(document_blobs).where(document_blobs.c.key == key, document_blobs.c.owner == owner))
 
 
 # ------------------------------------------------------ profile extraction

@@ -21,7 +21,7 @@ say so.
 | **Feedback learning** | Structured feedback ("wrong seniority", "excellent match", …) adjusts ranking per attribute, after ≥2 consistent signals; explicit profile preferences always win; every learned preference is visible, switchable and resettable; improvement is measured (leave-one-out AUC). |
 | **Applications** | Lifecycle (needs review → shortlisted → draft ready → applied → recruiter response → interview → offer / rejected / withdrawn), notes, recruiter details, interviews & reminders, full audit trail. Contradictory moves are refused. |
 | **Drafts** | Email + optional cover letter + answers to application questions, from the selected resume. Every generation and every edit is a new immutable version. Missing information is flagged instead of invented. |
-| **Profile & resumes** | Structured profile (experience, skills with provenance, projects, preferences, exclusions, free-text notes for the agent), multiple resumes with versions (PDF/DOCX), stored privately. Extraction proposes; you choose what to apply. |
+| **Profile & resumes** | Structured profile (experience, skills with provenance, projects, preferences, exclusions, free-text notes for the agent), multiple resumes with versions (PDF/DOCX), stored privately in the same database. Extraction proposes; you choose what to apply. |
 | **Google (optional)** | Gmail: save drafts (`gmail.compose` only, so no inbox reading and no sending). Drive: import files you pick in Google's Picker (`drive.file` only). |
 
 ## Architecture
@@ -42,7 +42,7 @@ tests.yml    every push: pytest + vitest
                      │                                 │
                      └──────── Supabase Postgres ──────┘
                                schema `jobseeker` (Alembic: db/)
-                               + private Storage bucket for resumes
+                               (resume files too: document_blobs)
 ```
 
 * One data layer (SQLAlchemy Core over `DATABASE_URL`) for the pipeline and
@@ -75,7 +75,7 @@ Settings → Secrets and variables → Actions:
 | `GMAIL_ADDRESS` + `GMAIL_APP_PASSWORD` (or `SMTP_*`) | Saturday digest |
 | `DASHBOARD_URL` *(optional)* | "Open in JobLookup" links in the digest |
 
-`SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` are no longer used by the pipeline (safe to keep).
+`SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` are no longer used anywhere. Delete them.
 
 ### 3. Render (dashboard)
 
@@ -85,13 +85,12 @@ Settings → Secrets and variables → Actions:
 |---|---|
 | `DATABASE_URL` | same as above |
 | `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` | HTTP Basic Auth for the whole app |
-| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | private resume storage (Supabase Storage bucket `jobseeker-documents`, created private on first upload) |
 | `OPENAI_API_KEY` (or other provider) | draft generation + resume extraction in the dashboard |
 | `TOKEN_ENCRYPTION_KEY` | encrypts Google tokens at rest (any long random string; `generateValue` in render.yaml) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_API_KEY`, `GOOGLE_APP_ID` | optional Google integrations (below) |
 
 Render injects `RENDER_EXTERNAL_URL`, which is used to build the OAuth redirect
-URI (override with `PUBLIC_BASE_URL`). The free plan sleeps when idle; the first
+URI (elsewhere, set `DASHBOARD_URL`). The free plan sleeps when idle; the first
 request after that takes ~30s.
 
 ### 4. Google integrations (optional)
@@ -128,7 +127,7 @@ export DATABASE_URL=postgresql+psycopg://postgres@localhost:5432/joblookup
 (cd db && alembic upgrade head)
 
 # API (http://localhost:8000) + frontend dev server (http://localhost:5173, proxies /api)
-(cd webapp && DASHBOARD_USERNAME=me DASHBOARD_PASSWORD=pw FILE_STORAGE=local uvicorn main:app --reload) &
+(cd webapp && DASHBOARD_USERNAME=me DASHBOARD_PASSWORD=pw uvicorn main:app --reload) &
 (cd webapp/frontend && npm install && npm run dev)
 
 # Tests: a disposable Postgres admin URL; each run creates and drops its own database

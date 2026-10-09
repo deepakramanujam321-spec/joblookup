@@ -80,7 +80,7 @@ def store_resume(conn, account: str, data: bytes, filename: str, display_name: s
         purpose = purpose if purpose is not None else previous.purpose
     display_name = display_name or filename
     key = f"{account}/resumes/{uuid.uuid4().hex}{_extension(content_type)}"
-    documents.storage_from_env().put(key, data, content_type)
+    documents.put_file(conn, key, account, data, content_type)
     has_default = conn.execute(sa.select(resumes.c.id).where(
         resumes.c.owner == account, resumes.c.is_default.is_(True), resumes.c.deleted_at.is_(None))).first()
     make_default = make_default or has_default is None
@@ -134,25 +134,22 @@ def delete_resume(resume_id: int, user: CurrentUser):
         row = _owned_resume(conn, user.account, resume_id)
         conn.execute(sa.update(resumes).where(resumes.c.id == resume_id).values(
             deleted_at=datetime.now(timezone.utc), is_default=False))
+        if row.storage_key:
+            documents.delete_file(conn, row.storage_key, user.account)
         if row.is_default:
             nxt = conn.execute(sa.select(resumes.c.id).where(resumes.c.owner == user.account, resumes.c.deleted_at.is_(None))
                                .order_by(resumes.c.uploaded_at.desc()).limit(1)).scalar()
             if nxt:
                 conn.execute(sa.update(resumes).where(resumes.c.id == nxt).values(is_default=True))
-    if row.storage_key:
-        try:
-            documents.storage_from_env().delete(row.storage_key)
-        except Exception:
-            pass  # the row is already detached; an orphaned private object is harmless
 
 
 @router.get("/resumes/{resume_id}/file")
 def download_resume(resume_id: int, user: CurrentUser):
     with engine().begin() as conn:
         row = _owned_resume(conn, user.account, resume_id)
-    if not row.storage_key:
+        data = documents.get_file(conn, row.storage_key, user.account) if row.storage_key else None
+    if data is None:
         return Response(row.extracted_text or "", media_type="text/plain; charset=utf-8")
-    data = documents.storage_from_env().get(row.storage_key)
     safe_name = "".join(ch for ch in row.filename if ch.isalnum() or ch in "._- ") or "resume"
     return Response(data, media_type=row.content_type, headers={"Content-Disposition": f'attachment; filename="{safe_name}"'})
 

@@ -73,7 +73,9 @@ def client_config() -> dict | None:
 
 
 def redirect_uri() -> str:
-    base = os.environ.get("PUBLIC_BASE_URL") or os.environ.get("RENDER_EXTERNAL_URL") or "http://localhost:8000"
+    # DASHBOARD_URL is the one setting for "where the dashboard lives" (the
+    # digest uses it too); Render provides RENDER_EXTERNAL_URL itself.
+    base = os.environ.get("DASHBOARD_URL") or os.environ.get("RENDER_EXTERNAL_URL") or "http://localhost:8000"
     return f"{base.rstrip('/')}/api/v2/integrations/google/callback"
 
 

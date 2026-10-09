@@ -14,11 +14,6 @@ services:
         sync: false
       - key: DASHBOARD_PASSWORD
         sync: false
-      # Private resume storage (Supabase Storage) -- same project's REST URL + service key
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
       # Draft generation / resume extraction: any one LiteLLM provider key
       - key: OPENAI_API_KEY
         sync: false

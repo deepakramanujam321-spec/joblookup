@@ -21,7 +21,7 @@ class Resp:
 def configured(monkeypatch):
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "cid")
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "csecret")
-    monkeypatch.setenv("PUBLIC_BASE_URL", "https://jl.example.com")
+    monkeypatch.setenv("DASHBOARD_URL", "https://jl.example.com")
 
 
 def _connect(engine, monkeypatch, service="gmail", scope=None):

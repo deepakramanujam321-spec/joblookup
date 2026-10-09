@@ -20,7 +20,7 @@ frontend/src/             pages/, components/, api/ (typed client + React Query 
 
 ```bash
 cd webapp
-DATABASE_URL=... DASHBOARD_USERNAME=me DASHBOARD_PASSWORD=pw FILE_STORAGE=local uvicorn main:app --reload
+DATABASE_URL=... DASHBOARD_USERNAME=me DASHBOARD_PASSWORD=pw uvicorn main:app --reload
 cd frontend && npm install && npm run dev      # http://localhost:5173, proxies /api to :8000
 ```
 
@@ -35,7 +35,7 @@ separate Node stage.
   and the app sends a CSP that forbids inline/third-party scripts (except
   Google's Picker loader).
 * Uploads: type by magic bytes, 5 MB cap, DOCX zip-bomb/macro checks;
-  stored in a private bucket and downloaded only through the API.
+  stored in Postgres (`document_blobs`) and downloaded only through the API.
 * LLM prompts wrap postings/documents as untrusted data; claims about the
   candidate are checked against their own evidence before being kept.
 * Rate limits on paid/third-party endpoints (LLM, Gmail, Drive, live checks).

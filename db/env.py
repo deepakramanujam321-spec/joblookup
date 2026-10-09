@@ -23,10 +23,8 @@ database_url = os.environ.get("DATABASE_URL")
 if not database_url:
     raise RuntimeError(
         "DATABASE_URL is not set. This is Supabase's direct Postgres connection "
-        "string (Project Settings -> Database -> Connection string -> "
-        "'Transaction pooler' or 'Session pooler'), which is different from the "
-        "SUPABASE_SERVICE_ROLE_KEY the app uses at runtime for REST calls. "
-        "See db/README.md."
+        "string (Supabase -> Connect -> 'Session pooler'). It's the one "
+        "database setting the whole app uses. See db/README.md."
     )
 # Escape % for configparser: URL-encoded passwords (e.g. %40 for "@")
 # otherwise crash with "invalid interpolation syntax".
