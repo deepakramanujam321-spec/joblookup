@@ -275,3 +275,16 @@ def test_health_explains_database_failures(monkeypatch):
     assert main.classify_db_error(Exception("FATAL: Tenant or user not found")) == "auth_failed"
     assert main.classify_db_error(Exception("failed to resolve host 'x': Name or service not known")) == "host_not_found"
     assert main.classify_db_error(Exception("connection refused")) == "unreachable"
+
+
+def test_applied_jobs_leave_recommended(client, make_job):
+    applied_id, open_id = make_job(), make_job()
+    for status in ("shortlisted", "applied"):
+        assert client.put(f"/api/v2/jobs/{applied_id}/application", json={"status": status}).status_code == 200
+
+    def ids(view):
+        return {j["id"] for j in client.get("/api/v2/jobs", params={"view": view}).json()["items"]}
+    assert open_id in ids("recommended") and applied_id not in ids("recommended")
+    assert applied_id in ids("applied")
+    client.put(f"/api/v2/jobs/{applied_id}/application", json={"status": "interview"})
+    assert applied_id not in ids("recommended") and applied_id in ids("applied")

@@ -70,13 +70,14 @@ def _apply_filters(query, f: JobFilters, owner: str, review_threshold: float, st
     )
     views = {
         "all": sa.true(),
-        "recommended": sa.and_(live, status_expr.notin_(("dismissed", "rejected", "withdrawn", "closed"))),
+        # only jobs still to act on: once applied, a job moves to "applied"
+        "recommended": sa.and_(live, status_expr.in_(lifecycle.NOT_YET_APPLIED)),
         "needs_review": sa.and_(live, status_expr == "needs_review"),
         "saved": applications.c.saved.is_(True),
         "recent": sa.and_(jobs.c.listing_quality == "ok", jobs.c.discovered_at >= now - timedelta(days=7)),
         "stale": sa.and_(jobs.c.listing_quality == "ok", jobs.c.verification_status != "closed", stale),
-        "applied": status_expr.in_(("applied", "recruiter_response", "interview", "offer")),
-        "dismissed": status_expr.in_(("dismissed", "rejected", "withdrawn")),
+        "applied": status_expr.in_(lifecycle.APPLIED),
+        "dismissed": status_expr.in_(lifecycle.RULED_OUT),
         "closed": status_expr == "closed",
     }
     query = query.where(views.get(f.view, sa.true()))

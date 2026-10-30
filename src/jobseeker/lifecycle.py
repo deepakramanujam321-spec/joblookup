@@ -32,6 +32,10 @@ STATUSES = (
 PRE_APPLICATION = {"discovered", "needs_review", "shortlisted", "draft_ready", "dismissed", "closed"}
 REQUIRES_APPLIED = {"recruiter_response", "interview", "offer", "rejected", "withdrawn"}
 ACTIVE_PIPELINE = {"shortlisted", "draft_ready", "applied", "recruiter_response", "interview", "offer"}
+# Dashboard groupings: still deciding / already applied / ruled out.
+NOT_YET_APPLIED = ("discovered", "needs_review", "shortlisted", "draft_ready")
+APPLIED = ("applied", "recruiter_response", "interview", "offer")
+RULED_OUT = ("dismissed", "rejected", "withdrawn")
 
 TRANSITIONS: dict[str, set[str]] = {
     "discovered": {"needs_review", "shortlisted", "draft_ready", "applied", "dismissed", "closed"},
