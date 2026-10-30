@@ -5,7 +5,7 @@ evidence, skills, salary, listing-quality checks), then scores whatever
 changed. Safe to run repeatedly -- unchanged rows are skipped and cached
 assessments are reused.
 
-Usage: python scripts/run_enrich.py [--limit 500] [--llm-budget 120]
+Usage: python scripts/run_enrich.py [--limit 500] [--llm-budget 120] [--review-all]
 Requires DATABASE_URL.
 """
 
@@ -25,11 +25,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=500)
     parser.add_argument("--llm-budget", type=int, default=pipeline.DEFAULT_LLM_BUDGET)
+    parser.add_argument("--review-all", action="store_true",
+                        help="AI-review open jobs the cost gate would skip (location/role mismatch)")
     args = parser.parse_args()
     engine = get_engine()
     with runs.recorded(engine, "enrich") as rec:
         enrich_stats = verification.enrich_pending(engine, limit=args.limit)
-        score_stats = pipeline.score_pending(engine, llm_budget=args.llm_budget, limit=args.limit)
+        score_stats = pipeline.score_pending(engine, llm_budget=args.llm_budget, limit=args.limit,
+                                             review_all=args.review_all)
         llm_error, llm_failed = pipeline.llm_health(score_stats)
         if llm_error:
             rec.errors.append(llm_error)

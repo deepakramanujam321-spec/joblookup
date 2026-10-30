@@ -10,6 +10,10 @@ on:
         description: "Max semantic LLM calls this run (cost cap; ~$0.001 each on gpt-4o-mini)"
         default: "120"
         required: true
+      review_all:
+        description: "Also AI-review open jobs normally skipped for location/role mismatch"
+        type: boolean
+        default: false
 
 concurrency:
   group: pipeline-writes
@@ -31,7 +35,7 @@ jobs:
       - name: Sync resumes from the resume hub folder
         run: python scripts/sync_resumes.py
       - name: Enrich and score
-        run: python scripts/run_enrich.py --llm-budget "${{ inputs.llm_budget }}"
+        run: python scripts/run_enrich.py --llm-budget "${{ inputs.llm_budget }}" ${{ inputs.review_all && '--review-all' || '' }}
         env:
           LLM_MODEL: ${{ secrets.LLM_MODEL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

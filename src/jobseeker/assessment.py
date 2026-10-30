@@ -120,9 +120,14 @@ def semantic_assessment(job: dict, profile: dict, resume_text: str, additional_i
     }, draft
 
 
-def should_run_semantic(job: dict, profile: dict, deterministic: dict) -> bool:
+def should_run_semantic(job: dict, profile: dict, deterministic: dict, review_all: bool = False) -> bool:
+    """Cost gate for the AI read. `review_all` drops the fit-based skips
+    (deal breakers, role, location) for a one-off full review; closed
+    postings and non-listings are never worth a call."""
     if job.get("listing_quality") == "not_a_listing" or job.get("verification_status") == "closed":
         return False
+    if review_all:
+        return True
     if deterministic["deal_breakers"]:
         return False
     role = deterministic["components"]["role"]["score"]
@@ -150,12 +155,13 @@ def persist_priority(conn: Connection, job: dict, fit: float | None, profile: di
 
 
 def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, resume_text: str, evidence: str,
-               model: str | None, allow_llm: bool, learned: list[dict], now: datetime | None = None) -> dict:
+               model: str | None, allow_llm: bool, learned: list[dict], now: datetime | None = None,
+               review_all: bool = False) -> dict:
     """Returns {"assessment", "draft", "llm_called", "cached", "llm_error"}."""
     now = now or datetime.now(timezone.utc)
     profile = profile_record["data"]
     deterministic = matching.assess(job, profile, resume_text, None)
-    run_llm = allow_llm and model is not None and should_run_semantic(job, profile, deterministic)
+    run_llm = allow_llm and model is not None and should_run_semantic(job, profile, deterministic, review_all)
     previous = None if run_llm else previous_semantic(conn, job["id"], owner)
     key = input_hash(job, profile_record["version"], resume_text, model if run_llm else (previous or {}).get("key"))
 

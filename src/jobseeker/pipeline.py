@@ -55,7 +55,7 @@ def _needs_scoring(inputs: dict):
 
 
 def score_pending(engine: Engine, owner: str = profile_mod.DEFAULT_OWNER, llm_budget: int = DEFAULT_LLM_BUDGET,
-                  limit: int = 500) -> dict:
+                  limit: int = 500, review_all: bool = False) -> dict:
     with engine.begin() as conn:
         record = profile_mod.get_or_seed(conn, owner)
         resume_id, resume = profile_mod.default_resume_text(conn, owner)
@@ -72,7 +72,7 @@ def score_pending(engine: Engine, owner: str = profile_mod.DEFAULT_OWNER, llm_bu
     ranked = []
     for job in candidates:
         pre = matching.assess(job, profile, resume, None)
-        eligible = assessment.should_run_semantic(job, profile, pre)
+        eligible = assessment.should_run_semantic(job, profile, pre, review_all)
         ranked.append((eligible, pre["overall_score"], job))
     ranked.sort(key=lambda t: (t[0], t[1]), reverse=True)
 
@@ -87,7 +87,8 @@ def score_pending(engine: Engine, owner: str = profile_mod.DEFAULT_OWNER, llm_bu
             stats["llm_disabled"] = True
         allow = bool(model) and eligible and budget > 0 and not stats["llm_disabled"]
         with engine.begin() as conn:
-            outcome = assessment.assess_job(conn, job, owner, record, resume, evidence, model, allow, learned)
+            outcome = assessment.assess_job(conn, job, owner, record, resume, evidence, model, allow, learned,
+                                           review_all=review_all)
             if outcome["llm_error"]:
                 stats["llm_errors"] += 1
                 stats["llm_first_error"] = stats["llm_first_error"] or outcome["llm_error"]

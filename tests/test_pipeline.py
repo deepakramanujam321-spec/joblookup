@@ -107,3 +107,12 @@ def test_failed_ai_attempt_is_retried_on_the_next_run(engine, make_job, monkeypa
     monkeypatch.setattr(llm, "call_tool", fake_llm(calls))
     stats = pipeline.score_pending(engine)
     assert calls and stats["llm_calls"] == 1 and stats["cached"] == 0
+
+
+def test_review_all_reads_jobs_the_cost_gate_skips(engine, make_job, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    make_job(url="https://jobs.lever.co/acme/it-director", title="Director of IT and Workplace")
+    calls = []
+    monkeypatch.setattr(llm, "call_tool", fake_llm(calls))
+    assert pipeline.score_pending(engine)["llm_calls"] == 0  # role gate skips it
+    assert pipeline.score_pending(engine, review_all=True)["llm_calls"] == 1 and calls
