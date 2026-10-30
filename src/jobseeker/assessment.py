@@ -166,6 +166,7 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
     ).mappings().first()
     draft = None
     llm_called = False
+    llm_error = None
     if cached:
         result = {"overall_score": float(cached["overall_score"]), "components": cached["components"],
                   "strengths": cached["strengths"], "gaps": cached["gaps"], "rationale": cached["rationale"]}
@@ -176,7 +177,8 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
                 semantic, draft = semantic_assessment(job, profile, resume_text, profile_record["additional_info"], evidence, model)
                 llm_called = True
             except Exception as e:  # a model hiccup degrades to deterministic-only, never loses the job
-                print(f"[assessment] semantic call failed for job {job['id']}: {e}", file=sys.stderr)
+                llm_error = f"{type(e).__name__}: {e}"[:300]
+                print(f"[assessment] semantic call failed for job {job['id']}: {llm_error}", file=sys.stderr)
         result = matching.assess(job, profile, resume_text, semantic)
         rationale = (semantic or {}).get("rationale") or _deterministic_rationale(result)
         result["rationale"] = rationale
@@ -209,7 +211,7 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
     )
     candidate_skills = matching.candidate_skill_set(profile, resume_text)
     persist_priority(conn, job, result["overall_score"], profile, candidate_skills, learned, now)
-    return {"assessment": result, "draft": draft, "llm_called": llm_called, "cached": bool(cached)}
+    return {"assessment": result, "draft": draft, "llm_called": llm_called, "cached": bool(cached), "llm_error": llm_error}
 
 
 def scoring_inputs(profile_version: int, resume_text: str) -> dict:

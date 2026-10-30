@@ -22,6 +22,17 @@ from .database import jobs
 
 DEFAULT_LLM_BUDGET = int(os.environ.get("MAX_LLM_CALLS_PER_RUN", "60"))
 DIGEST_THRESHOLD = assessment.DRAFT_THRESHOLD
+LLM_CIRCUIT_BREAKER = 3
+
+
+def llm_health(stats: dict) -> tuple[str | None, bool]:
+    """(error message for the run record, whether the run should fail).
+    Any AI failure degrades the run; *every* attempt failing fails it, so a
+    broken key/dependency turns the GitHub run red instead of hiding."""
+    if not stats.get("llm_errors"):
+        return None, False
+    message = f"AI scoring failed {stats['llm_errors']}x: {stats['llm_first_error']}"
+    return message, stats.get("llm_calls", 0) == 0
 
 
 def _needs_scoring(inputs: dict):
@@ -65,13 +76,24 @@ def score_pending(engine: Engine, owner: str = profile_mod.DEFAULT_OWNER, llm_bu
         ranked.append((eligible, pre["overall_score"], job))
     ranked.sort(key=lambda t: (t[0], t[1]), reverse=True)
 
-    stats = {"candidates": len(candidates), "llm_calls": 0, "cached": 0, "queued_for_digest": 0, "drafts": 0, "model": model}
+    stats = {"candidates": len(candidates), "llm_calls": 0, "cached": 0, "queued_for_digest": 0, "drafts": 0, "model": model,
+             "llm_errors": 0, "llm_first_error": None, "llm_disabled": False}
     budget = llm_budget
+    consecutive_errors = 0
     for eligible, _, job in ranked:
-        allow = bool(model) and eligible and budget > 0
+        # Circuit breaker: the same failure several times in a row (bad key,
+        # quota, broken dependency) won't fix itself mid-run.
+        if consecutive_errors >= LLM_CIRCUIT_BREAKER:
+            stats["llm_disabled"] = True
+        allow = bool(model) and eligible and budget > 0 and not stats["llm_disabled"]
         with engine.begin() as conn:
             outcome = assessment.assess_job(conn, job, owner, record, resume, evidence, model, allow, learned)
+            if outcome["llm_error"]:
+                stats["llm_errors"] += 1
+                stats["llm_first_error"] = stats["llm_first_error"] or outcome["llm_error"]
+                consecutive_errors += 1
             if outcome["llm_called"]:
+                consecutive_errors = 0
                 budget -= 1
                 stats["llm_calls"] += 1
             if outcome["cached"]:

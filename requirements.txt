@@ -4,7 +4,9 @@ feedparser>=6.0
 beautifulsoup4>=4.12
 nh3>=0.2
 scrapling[fetchers]>=0.2
-litellm>=1.50
+# Pinned: litellm 1.106.x broke every call (ModuleNotFoundError: mcp). Upgrade only
+# with tests/test_llm_smoke.py passing in CI.
+litellm==1.104.2
 sqlalchemy>=2.0
 psycopg[binary]>=3.2
 pydantic>=2.7

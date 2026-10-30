@@ -11,4 +11,6 @@ nh3>=0.2
 pypdf>=4.0
 python-docx>=1.1
 cryptography>=42
-litellm>=1.50
+# Pinned: litellm 1.106.x broke every call (ModuleNotFoundError: mcp). Upgrade only
+# with tests/test_llm_smoke.py passing in CI.
+litellm==1.104.2

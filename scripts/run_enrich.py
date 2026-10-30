@@ -30,9 +30,15 @@ def main() -> int:
     with runs.recorded(engine, "enrich") as rec:
         enrich_stats = verification.enrich_pending(engine, limit=args.limit)
         score_stats = pipeline.score_pending(engine, llm_budget=args.llm_budget, limit=args.limit)
+        llm_error, llm_failed = pipeline.llm_health(score_stats)
+        if llm_error:
+            rec.errors.append(llm_error)
         rec.values.update(jobs_found=enrich_stats["processed"], jobs_updated=score_stats["candidates"])
         rec.details = {"enrich": enrich_stats, "score": score_stats}
         print(f"[run_enrich] enrich={enrich_stats} score={score_stats}", file=sys.stderr)
+    if llm_failed:
+        print(f"::error::{llm_error}", file=sys.stderr)
+        return 1
     return 0
 
 

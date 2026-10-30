@@ -69,6 +69,9 @@ def main() -> int:
         print(f"[score_and_draft] enrich: {enrich_stats}", file=sys.stderr)
 
         score_stats = pipeline.score_pending(engine, llm_budget=args.llm_budget)
+        llm_error, llm_failed = pipeline.llm_health(score_stats)
+        if llm_error:
+            rec.errors.append(llm_error)  # run shows as degraded on the dashboard
         rec.values["jobs_updated"] = score_stats["candidates"]
         print(f"[score_and_draft] score: {score_stats}", file=sys.stderr)
         rec.details = {
@@ -76,6 +79,9 @@ def main() -> int:
                        "rejected": stats.rejected, "rejected_reasons": stats.rejected_reasons},
             "enrich": enrich_stats, "score": score_stats,
         }
+    if llm_failed:
+        print(f"::error::{llm_error}", file=sys.stderr)
+        return 1  # every AI call failed: fail the job so GitHub notifies
     return 0
 
 

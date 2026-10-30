@@ -78,3 +78,21 @@ def test_deterministic_only_without_provider(engine, make_job):
         row = conn.execute(sa.select(jobs.c.fit_score, jobs.c.fit_rationale, jobs.c.status)).one()
     assert row.fit_score is not None and "structured signals only" in row.fit_rationale
     assert row.status == "scored"  # never queued for the digest without an AI read
+
+
+def test_llm_failures_are_loud_and_circuit_broken(engine, make_job, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    calls = []
+
+    def broken(*a, **k):
+        calls.append(1)
+        raise ModuleNotFoundError("No module named 'mcp'")
+    monkeypatch.setattr(llm, "call_tool", broken)
+    for i in range(6):
+        make_job(url=f"https://jobs.lever.co/acme/broken-{i}")
+    stats = pipeline.score_pending(engine)
+    assert len(calls) == pipeline.LLM_CIRCUIT_BREAKER and stats["llm_disabled"]  # stopped retrying
+    assert stats["llm_calls"] == 0 and stats["llm_errors"] == 3
+    message, should_fail = pipeline.llm_health(stats)
+    assert "No module named 'mcp'" in message and should_fail is True
+    assert pipeline.llm_health({"llm_errors": 1, "llm_calls": 5, "llm_first_error": "x"})[1] is False
