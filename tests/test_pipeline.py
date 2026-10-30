@@ -96,3 +96,14 @@ def test_llm_failures_are_loud_and_circuit_broken(engine, make_job, monkeypatch)
     message, should_fail = pipeline.llm_health(stats)
     assert "No module named 'mcp'" in message and should_fail is True
     assert pipeline.llm_health({"llm_errors": 1, "llm_calls": 5, "llm_first_error": "x"})[1] is False
+
+
+def test_failed_ai_attempt_is_retried_on_the_next_run(engine, make_job, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    make_job(url="https://jobs.lever.co/acme/retry-me")
+    monkeypatch.setattr(llm, "call_tool", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    assert pipeline.score_pending(engine)["llm_errors"] == 1
+    calls = []
+    monkeypatch.setattr(llm, "call_tool", fake_llm(calls))
+    stats = pipeline.score_pending(engine)
+    assert calls and stats["llm_calls"] == 1 and stats["cached"] == 0

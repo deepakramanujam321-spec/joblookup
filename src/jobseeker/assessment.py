@@ -151,7 +151,7 @@ def persist_priority(conn: Connection, job: dict, fit: float | None, profile: di
 
 def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, resume_text: str, evidence: str,
                model: str | None, allow_llm: bool, learned: list[dict], now: datetime | None = None) -> dict:
-    """Returns {"assessment", "draft", "llm_called", "cached"}."""
+    """Returns {"assessment", "draft", "llm_called", "cached", "llm_error"}."""
     now = now or datetime.now(timezone.utc)
     profile = profile_record["data"]
     deterministic = matching.assess(job, profile, resume_text, None)
@@ -164,6 +164,8 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
             job_assessments.c.job_id == job["id"], job_assessments.c.owner == owner, job_assessments.c.input_hash == key
         )
     ).mappings().first()
+    if cached and run_llm and cached["llm_score"] is None:
+        cached = None  # an earlier AI attempt failed under this key: retry, don't trust it
     draft = None
     llm_called = False
     llm_error = None
@@ -182,15 +184,17 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
         result = matching.assess(job, profile, resume_text, semantic)
         rationale = (semantic or {}).get("rationale") or _deterministic_rationale(result)
         result["rationale"] = rationale
-        conn.execute(
-            pg_insert(job_assessments).values(
+        if llm_error is None:  # never cache a failed AI attempt, or later runs would skip the retry
+            row = pg_insert(job_assessments).values(
                 job_id=job["id"], owner=owner, scoring_version=matching.SCORING_VERSION,
                 profile_version=profile_record["version"], input_hash=key,
                 model=(semantic or {}).get("model"), overall_score=result["overall_score"],
                 llm_score=(semantic or {}).get("score"), components=result["components"],
                 strengths=result["strengths"], gaps=result["gaps"], rationale=rationale,
-            ).on_conflict_do_nothing(constraint="job_assessments_cache_key")
-        )
+            )
+            refreshed = ("model", "overall_score", "llm_score", "components", "strengths", "gaps", "rationale")
+            conn.execute(row.on_conflict_do_update(  # replaces a row left by a failed attempt before this fix
+                constraint="job_assessments_cache_key", set_={c: row.excluded[c] for c in refreshed}))
 
     highlights = {
         "matched_skills": result["components"]["skills"]["matches"][:6],
