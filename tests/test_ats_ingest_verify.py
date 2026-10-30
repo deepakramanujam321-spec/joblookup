@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import sqlalchemy as sa
 
 from conftest import make_listing
-from jobseeker import ats, ingest, verification
+from jobseeker import ats, ingest, normalize, verification
 from jobseeker.database import job_sources, job_verifications, jobs
 
 
@@ -158,3 +158,17 @@ def test_enrich_marks_search_pages_and_uses_api(engine, monkeypatch):
     assert lever["description_is_partial"] is False and "<h3>Requirements</h3>" in lever["description_html"]
     assert lever["employment_type"] == "full_time" and lever["remote_type"] == "hybrid" and lever["experience_min_years"] == 5
     assert lever["verification_status"] == "active" and lever["company"] == "Acme"
+
+
+def test_pay_to_apply_boards_are_never_stored_or_revived(engine):
+    paywalled = "https://remoteOK.com/remote-jobs/remote-senior-backend-engineer-rain-1137544"
+    assert normalize.is_pay_to_apply(paywalled) and not normalize.is_pay_to_apply("https://jobs.lever.co/acme/x")
+    with engine.begin() as conn:
+        stats = ingest.upsert_listings(conn, [make_listing(source="linkedin", url=paywalled, company="Rain")])
+        assert stats.new_ids == [] and "pay-to-apply" in next(iter(stats.rejected_reasons))
+        # a row stored before the rule existed stays excluded when re-enriched
+        conn.execute(sa.insert(jobs).values(source="remoteok", url=paywalled, title="Senior Backend", company="Rain",
+                                            status="scored", enrichment_version=0))
+    verification.enrich_pending(engine, delay=0)
+    with engine.connect() as conn:
+        assert conn.execute(sa.select(jobs.c.listing_quality).where(jobs.c.url == paywalled)).scalar_one() == "not_a_listing"

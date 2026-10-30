@@ -152,7 +152,8 @@ def renormalize(conn: Connection, job: dict, now: datetime) -> None:
         fields["posted_at_evidence"] = fields["posted_at_evidence"] or "remoteok_api.date"
     elif job["source"] == "weworkremotely" and fields["posted_at_ts"]:
         fields["posted_at_evidence"] = "wwr_rss.pubDate"
-    quality = "ok" if normalize.is_specific_listing_url(job["url"], job["source"]) else "not_a_listing"
+    usable = normalize.is_specific_listing_url(job["url"], job["source"]) and not normalize.is_pay_to_apply(job["url"])
+    quality = "ok" if usable else "not_a_listing"
     fields.pop("company")
     conn.execute(
         sa.update(jobs).where(jobs.c.id == job["id"]).values(

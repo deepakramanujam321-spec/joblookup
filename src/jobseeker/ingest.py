@@ -164,6 +164,9 @@ def upsert_listings(conn: Connection, listings: list[JobListing], now: datetime 
         if not listing.url or not (listing.title or "").strip():
             stats.reject("missing title or URL")
             continue
+        if normalize.is_pay_to_apply(listing.url):
+            stats.reject("board charges applicants (pay-to-apply)")
+            continue
         if not normalize.is_specific_listing_url(listing.url, listing.source):
             stats.reject("search/category page, not a single posting")
             continue

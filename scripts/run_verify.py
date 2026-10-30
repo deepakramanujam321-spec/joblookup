@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Re-checks whether stored listings are still open (official ATS APIs,
-or a plain page check for RemoteOK/WWR), tracked applications first, and
+or a plain page check for WWR), tracked applications first, and
 re-ranks so freshness shows up in priority. LinkedIn/Indeed are never
 fetched for verification.
 

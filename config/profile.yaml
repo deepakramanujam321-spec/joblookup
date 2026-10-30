@@ -60,7 +60,7 @@ exclusions:
 
 sources:
   ats_boards: true # Greenhouse / Lever / Ashby, discovered via Brave Search
-  remote_boards: true # RemoteOK API + WeWorkRemotely RSS
+  remote_boards: true # WeWorkRemotely RSS (RemoteOK dropped: pay-to-apply)
   linkedin_indeed: true # public search results via Scrapling (stealth, no login) — best-effort, lower priority per ToS risk
 
 schedule:

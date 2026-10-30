@@ -63,8 +63,6 @@ def main() -> int:
         all_listings += _collect("ats_boards", lambda: sources.discover_ats_boards(profile, brave_api_key), source_stats)
 
     if enabled.get("remote_boards"):
-        print("[run_collect] fetching RemoteOK...", file=sys.stderr)
-        all_listings += _collect("remoteok", lambda: sources.fetch_remoteok(profile), source_stats)
         print("[run_collect] fetching WeWorkRemotely...", file=sys.stderr)
         all_listings += _collect("weworkremotely", lambda: sources.fetch_weworkremotely(profile), source_stats)
 

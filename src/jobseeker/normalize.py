@@ -73,6 +73,17 @@ def canonical_url(url: str) -> str:
     return urlunparse(("https", host, path, "", urlencode(query), ""))
 
 
+# Boards that put the apply step behind a paid membership (RemoteOK sends
+# non-members to /premium). Real employers don't charge applicants, so these
+# are never stored, scored or shown, whichever source surfaced them.
+PAY_TO_APPLY_HOSTS = frozenset({"remoteok.com"})
+
+
+def is_pay_to_apply(url: str) -> bool:
+    host = (urlparse(url or "").hostname or "").lower().removeprefix("www.")
+    return host in PAY_TO_APPLY_HOSTS
+
+
 def is_specific_listing_url(url: str, source: str) -> bool:
     """False for search-result / category pages that discovery sometimes
     returns in place of an individual vacancy (e.g. linkedin.com/jobs/

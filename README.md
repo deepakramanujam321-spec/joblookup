@@ -14,7 +14,7 @@ say so.
 
 | Area | What it does |
 |---|---|
-| **Collection** | Brave Search discovers Greenhouse / Lever / Ashby postings, which are then read from those ATS's **official public APIs** (full structured description, real publication date, employment type, pay when published). Discovered boards are expanded with other relevant openings. RemoteOK API, WeWorkRemotely RSS, LinkedIn/Indeed best-effort (individual postings only, JSON-LD when present). |
+| **Collection** | Brave Search discovers Greenhouse / Lever / Ashby postings, which are then read from those ATS's **official public APIs** (full structured description, real publication date, employment type, pay when published). Discovered boards are expanded with other relevant openings. WeWorkRemotely RSS, LinkedIn/Indeed best-effort (individual postings only, JSON-LD when present). |
 | **Data quality** | Canonical URLs, strict cross-source dedupe with provenance, search-result pages rejected, posting dates stored **only with source evidence** (otherwise "Posting date unavailable"), salaries/skills/seniority/experience extracted deterministically. |
 | **Freshness** | Listings are re-checked through the official APIs or page status. Only an authoritative signal (API 404, removed from a board, explicit "position filled") closes a job; network failures never do. |
 | **Matching** | Explainable fit breakdown: skills, role family, seniority, location priority, compensation, domain, plus one budgeted LLM read. Unknowns are skipped, not penalised. **Fit, recency, freshness and priority are separate scores.** Claims the LLM makes about you are kept only if your resume/profile supports them. |
@@ -150,6 +150,6 @@ secrets above. If reusing it requires editing Python, that's a bug.
 | Source | Method | Notes |
 |---|---|---|
 | Greenhouse / Lever / Ashby | Official public job-board APIs | Published for exactly this use |
-| RemoteOK | Public JSON API | Requires a real User-Agent |
+| ~~RemoteOK~~ | Not collected | Applying requires a paid membership; `normalize.PAY_TO_APPLY_HOSTS` rejects such links from any source |
 | WeWorkRemotely | RSS | Description may be partial; labelled as such |
 | LinkedIn / Indeed | Brave discovery + single public page fetch, no login | Best-effort; their ToS restrict automation, so these are never re-fetched for verification |

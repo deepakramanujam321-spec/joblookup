@@ -9,7 +9,6 @@ import sys
 from urllib.parse import urlparse
 
 import feedparser
-import requests
 
 from . import ats, brave_search, normalize, scrapling_fetch
 from .models import JobListing
@@ -112,66 +111,6 @@ def discover_ats_boards(profile: dict, brave_api_key: str) -> list[JobListing]:
 
 def parse_company_from_board(board: str) -> str:
     return board.replace("-", " ").replace("_", " ").title()
-
-
-def fetch_remoteok(profile: dict) -> list[JobListing]:
-    """RemoteOK's public JSON API. Requires a real User-Agent or it 403s."""
-    try:
-        resp = requests.get(
-            "https://remoteok.com/api",
-            headers={"User-Agent": "Mozilla/5.0 (job-search-agent; personal use)"},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        rows = resp.json()
-    except (requests.RequestException, ValueError) as e:
-        print(f"[sources] remoteok fetch failed: {e}", file=sys.stderr)
-        return []
-
-    titles_lower = [t.lower() for t in profile["role_focus"]["titles"]]
-    keywords_lower = [k.lower() for k in profile["role_focus"]["keywords_any"]]
-    listings = []
-
-    for row in rows:
-        if not isinstance(row, dict) or "position" not in row:
-            continue  # first element is API metadata, not a job
-        position = row.get("position", "")
-        tags = " ".join(row.get("tags", []))
-        haystack = f"{position} {tags}".lower()
-        if not any(k in haystack for k in titles_lower + keywords_lower):
-            continue
-
-        listings.append(
-            JobListing(
-                source="remoteok",
-                url=row.get("url", f"https://remoteok.com/remote-jobs/{row.get('id', '')}"),
-                title=position,
-                company=row.get("company", ""),
-                location=row.get("location", "Remote"),
-                remote_type="remote",
-                salary_text=_remoteok_salary_text(row),
-                description=normalize.html_to_text(row.get("description") or ""),
-                external_id=str(row.get("id", "")),
-                posted_at=row.get("date", "") or "",
-                description_html=normalize.sanitize_html(row.get("description")) or "",
-                description_source="remoteok_api",
-                description_is_partial=False,
-                posted_at_evidence="remoteok_api.date" if row.get("date") else "",
-                salary_min=float(row["salary_min"]) if row.get("salary_min") else None,
-                salary_max=float(row["salary_max"]) if row.get("salary_max") else None,
-                salary_currency="USD" if row.get("salary_min") else "",
-                salary_period="year" if row.get("salary_min") else "",
-            )
-        )
-
-    return listings
-
-
-def _remoteok_salary_text(row: dict) -> str:
-    low, high = row.get("salary_min"), row.get("salary_max")
-    if low and high:
-        return f"${int(low):,} - ${int(high):,} USD/year"
-    return row.get("salary", "") or ""
 
 
 def fetch_weworkremotely(profile: dict) -> list[JobListing]:
