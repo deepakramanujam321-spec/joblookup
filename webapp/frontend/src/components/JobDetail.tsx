@@ -3,7 +3,7 @@ import { useFeedbackCategories, useJob, useSubmitFeedback, useUpdateApplication,
 import type { JobDetail, MatchComponent, WorkflowStatus } from "../api/types";
 import { absolute, evidenceLabel, FRESHNESS_LABELS, postedLabel, SOURCE_LABELS, STATUS_LABELS, title } from "../lib/format";
 import { ApplicationWorkspace } from "./ApplicationWorkspace";
-import { Badge, Bar, ErrorState, Modal, SalaryBadge, Score, Skeleton, Time, errorMessage, useConfirm, useToast } from "./ui";
+import { Badge, Bar, ErrorState, Modal, ExperienceBadge, SalaryBadge, Score, Skeleton, Time, errorMessage, useConfirm, useToast } from "./ui";
 
 type Tab = "match" | "description" | "application" | "history";
 
@@ -76,6 +76,7 @@ function Header({ detail }: { detail: JobDetail }) {
       <div className="row wrap" style={{ gap: 6 }}>
         <Badge tone="accent">{STATUS_LABELS[status]}</Badge>
         <SalaryBadge job={job} />
+        <ExperienceBadge job={job} />
         <Badge tone={job.posted_at_ts ? "" : "warn"} title={job.posted_at_ts ? `${absolute(job.posted_at_ts)} · ${evidenceLabel(job.posted_at_evidence)}` : "The source didn't provide a publication date"}>
           {postedLabel(job.posted_at_ts)}
         </Badge>

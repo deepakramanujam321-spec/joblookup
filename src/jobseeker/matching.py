@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 from . import normalize
 
-SCORING_VERSION = "v2.1"  # v2.1: stated pay below the minimum caps fit
+SCORING_VERSION = "v2.2"  # v2.1: pay below the minimum caps fit; v2.2: so does an experience gap
 
 DEFAULT_WEIGHTS = {
     "semantic": 0.30,
@@ -34,6 +34,11 @@ DEFAULT_WEIGHTS = {
 # strong match, whatever else fits: fit is capped here (below the digest
 # and "worth reviewing" thresholds). Unstated pay is never penalised.
 BELOW_SALARY_FLOOR_CAP = 40.0
+DEAL_BREAKER_CAP = 25.0
+# A posting may ask for a little more experience than the candidate has
+# (a stretch application); beyond this it's out of reach and is treated
+# like a deal-breaker: capped, not AI-reviewed, kept out of Recommended.
+EXPERIENCE_STRETCH_YEARS = 1.0
 
 LABELS = {
     "semantic": "Overall fit (AI read of the full posting)",
@@ -284,6 +289,20 @@ def deal_breakers(job: dict, profile: dict) -> list[str]:
     return found
 
 
+def experience_gap(job: dict, profile: dict) -> dict:
+    """{"status", "need", "have"}; status is not_stated | unknown (posting
+    states years, profile doesn't) | meets | stretch | below."""
+    need, have = job.get("experience_min_years"), profile.get("total_experience_years")
+    if need is None:
+        return {"status": "not_stated", "need": None, "have": have}
+    need = float(need)
+    if have is None:
+        return {"status": "unknown", "need": need, "have": None}
+    have = float(have)
+    status = "meets" if have >= need else "stretch" if need - have <= EXPERIENCE_STRETCH_YEARS else "below"
+    return {"status": status, "need": need, "have": have}
+
+
 def assess(job: dict, profile: dict, resume_text: str, semantic: dict | None = None) -> dict:
     """semantic: {"score", "rationale", "strengths", "gaps"} from the LLM
     (already validated against the candidate's evidence), or None."""
@@ -311,12 +330,16 @@ def assess(job: dict, profile: dict, resume_text: str, semantic: dict | None = N
     overall = sum(weights[k] * c.score for k, c in known.items()) / known_weight if known_weight else 0.0
 
     blockers = deal_breakers(job, profile)
+    experience = experience_gap(job, profile)
+    if experience["status"] == "below":
+        components["seniority"].blocking = True  # reported once, as the blocker below
+        blockers.append(f"Experience gap: asks for {experience['need']:g}+ years, you have {experience['have']:g}")
     if components["compensation"].blocking:
         blockers += components["compensation"].gaps
     if any(b.startswith("Excluded company") for b in blockers):
         overall = 0.0
-    elif any(b.startswith("Deal-breaker") for b in blockers):
-        overall = min(overall, 25.0)
+    elif any(b.startswith(("Deal-breaker", "Experience gap")) for b in blockers):
+        overall = min(overall, DEAL_BREAKER_CAP)
     elif components["compensation"].blocking:
         overall = min(overall, BELOW_SALARY_FLOOR_CAP)
 

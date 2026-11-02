@@ -37,6 +37,17 @@ describe("JobList", () => {
     expect(screen.getByText("₹10L–₹14L · below your minimum")).toBeInTheDocument();
   });
 
+  it("shows years asked for against your experience, only when stated", () => {
+    renderAt("/", "/", <JobList loading={false} error={null} refetch={() => {}} selectedId={null} onOpen={() => {}} view="all" items={[
+      listItem({ id: 1, match_highlights: { experience: { status: "below", need: 5, have: 2 } } }),
+      listItem({ id: 2, match_highlights: { experience: { status: "stretch", need: 3, have: 2 } } }),
+      listItem({ id: 3, match_highlights: { experience: { status: "not_stated", need: null, have: 2 } } }),
+    ]} />);
+    expect(screen.getByText("Asks 5+ yrs · you have 2")).toBeInTheDocument();
+    expect(screen.getByText("Asks 3+ yrs · stretch (you have 2)")).toBeInTheDocument();
+    expect(screen.queryAllByText(/Asks .* yrs/)).toHaveLength(2);
+  });
+
   it("renders view-specific empty copy", () => {
     renderAt("/", "/", <JobList loading={false} error={null} refetch={() => {}} selectedId={null} onOpen={() => {}} view="saved" items={[]} />);
     expect(screen.getByText(/Jobs you save appear here/)).toBeInTheDocument();

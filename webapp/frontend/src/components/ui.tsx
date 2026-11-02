@@ -1,6 +1,7 @@
 // Small, dependency-free UI primitives shared by every screen.
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "../api/client";
+import type { ExperienceFit } from "../api/types";
 import { absolute, relative, salaryLabel, scoreTone } from "../lib/format";
 
 export function Score({ value, label }: { value: number | null | undefined; label?: string }) {
@@ -41,6 +42,18 @@ export function SalaryBadge({ job }: { job: SalaryFields }) {
   if (status === "meets") return <Badge tone="good" title="Stated pay meets the minimum in your profile">{label} · meets your minimum</Badge>;
   if (status === "below") return <Badge tone="bad" title="Stated pay is below the minimum in your profile">{label} · below your minimum</Badge>;
   return <Badge title="Stated pay (not compared with your minimum)">{label}</Badge>;
+}
+
+/** Years asked for vs your total experience, beside the pay badge. Shown
+ *  only when the posting states a requirement. */
+export function ExperienceBadge({ job }: { job: { match_highlights: { experience?: ExperienceFit } | null } }) {
+  const exp = job.match_highlights?.experience;
+  if (!exp || exp.status === "not_stated" || exp.need == null) return null;
+  const asks = `Asks ${exp.need}+ yrs`;
+  if (exp.status === "below") return <Badge tone="bad" title="Well beyond your experience: scored down and kept out of Recommended">{asks} · you have {exp.have}</Badge>;
+  if (exp.status === "stretch") return <Badge tone="warn" title="Slightly above your experience: a stretch application">{asks} · stretch (you have {exp.have})</Badge>;
+  if (exp.status === "meets") return <Badge tone="good" title="You meet the stated experience">{asks} · you have {exp.have}</Badge>;
+  return <Badge tone="warn" title="Add your total experience on the Profile page to compare">{asks} · set your experience</Badge>;
 }
 
 export function Time({ iso, prefix = "", fallback = "—" }: { iso: string | null | undefined; prefix?: string; fallback?: string }) {

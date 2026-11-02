@@ -5,7 +5,7 @@ import pytest
 import sqlalchemy as sa
 
 from jobseeker import google, llm, pipeline
-from jobseeker.database import application_events, applications
+from jobseeker.database import application_events, applications, jobs
 
 
 def test_auth_required(client):
@@ -288,3 +288,13 @@ def test_applied_jobs_leave_recommended(client, make_job):
     assert applied_id in ids("applied")
     client.put(f"/api/v2/jobs/{applied_id}/application", json={"status": "interview"})
     assert applied_id not in ids("recommended") and applied_id in ids("applied")
+
+
+def test_out_of_reach_experience_is_kept_out_of_recommended(client, make_job, engine):
+    reachable, out_of_reach = make_job(), make_job()
+    with engine.begin() as conn:
+        conn.execute(sa.update(jobs).where(jobs.c.id == out_of_reach).values(
+            match_highlights={"experience": {"status": "below", "need": 6, "have": 2}}))
+    recommended = {j["id"] for j in client.get("/api/v2/jobs", params={"view": "recommended"}).json()["items"]}
+    assert reachable in recommended and out_of_reach not in recommended
+    assert out_of_reach in {j["id"] for j in client.get("/api/v2/jobs", params={"view": "all"}).json()["items"]}

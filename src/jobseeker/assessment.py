@@ -211,6 +211,7 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
         # older resume/profile counts as False, so the pipeline refreshes it.
         "semantic": llm_called or (bool(cached) and run_llm and cached["llm_score"] is not None),
         "salary": salary_status(job, result["components"]["compensation"]),
+        "experience": matching.experience_gap(job, profile),
         "inputs": scoring_inputs(profile_record["version"], resume_text),
     }
     conn.execute(

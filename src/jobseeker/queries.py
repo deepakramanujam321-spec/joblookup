@@ -71,7 +71,8 @@ def _apply_filters(query, f: JobFilters, owner: str, review_threshold: float, st
     views = {
         "all": sa.true(),
         # only jobs still to act on: once applied, a job moves to "applied"
-        "recommended": sa.and_(live, status_expr.in_(lifecycle.NOT_YET_APPLIED)),
+        "recommended": sa.and_(live, status_expr.in_(lifecycle.NOT_YET_APPLIED), sa.func.coalesce(
+            jobs.c.match_highlights["experience"]["status"].as_string(), "") != "below"),
         "needs_review": sa.and_(live, status_expr == "needs_review"),
         "saved": applications.c.saved.is_(True),
         "recent": sa.and_(jobs.c.listing_quality == "ok", jobs.c.discovered_at >= now - timedelta(days=7)),

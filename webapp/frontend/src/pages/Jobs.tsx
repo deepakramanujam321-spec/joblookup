@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useFacets, useJobs } from "../api/hooks";
 import type { JobListItem } from "../api/types";
-import { Badge, EmptyState, ErrorState, SalaryBadge, Score, Skeleton } from "../components/ui";
+import { Badge, EmptyState, ErrorState, ExperienceBadge, SalaryBadge, Score, Skeleton } from "../components/ui";
 import { JobDetailView } from "../components/JobDetail";
 import { FRESHNESS_LABELS, SOURCE_LABELS, STATUS_LABELS, listFreshness, postedLabel, relative, title } from "../lib/format";
 import { activeFilterCount, fromSearchParams, remember, toSearchParams, type JobQuery } from "../lib/filters";
@@ -220,6 +220,7 @@ function JobRow({ job, selected, onOpen }: { job: JobListItem; selected: boolean
           {job.summary && <div className="job-row-summary">{job.summary}</div>}
           <div className="row wrap" style={{ marginTop: 6, gap: 4 }}>
             <SalaryBadge job={job} />
+            <ExperienceBadge job={job} />
             <Badge tone={job.posted_at_ts ? "" : "warn"} title={job.posted_at_ts ? undefined : `Discovered ${relative(job.discovered_at)}`}>
               {postedLabel(job.posted_at_ts)}
             </Badge>
