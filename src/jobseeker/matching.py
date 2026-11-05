@@ -19,7 +19,8 @@ from dataclasses import dataclass
 
 from . import normalize
 
-SCORING_VERSION = "v2.2"  # v2.1: pay below the minimum caps fit; v2.2: so does an experience gap
+SCORING_VERSION = "v2.3"  # v2.1: pay below the minimum caps fit; v2.2: so does an experience gap;
+# v2.3: match_highlights.excluded flags excluded company/deal-breaker/experience-gap for suppression
 
 DEFAULT_WEIGHTS = {
     "semantic": 0.30,
@@ -301,6 +302,17 @@ def experience_gap(job: dict, profile: dict) -> dict:
     have = float(have)
     status = "meets" if have >= need else "stretch" if need - have <= EXPERIENCE_STRETCH_YEARS else "below"
     return {"status": status, "need": need, "have": have}
+
+
+def hard_exclude(job: dict, profile: dict) -> bool:
+    """True when the job is fundamentally not viable: an excluded company,
+    a stated deal-breaker phrase, or an experience gap well beyond a
+    stretch. Unlike a soft issue -- unstated or below-floor salary, which
+    stays visible with just a badge -- this drives auto-dismissal
+    everywhere the user browses, not just a lower score."""
+    if deal_breakers(job, profile):
+        return True
+    return experience_gap(job, profile)["status"] == "below"
 
 
 def assess(job: dict, profile: dict, resume_text: str, semantic: dict | None = None) -> dict:

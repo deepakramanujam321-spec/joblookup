@@ -69,9 +69,12 @@ def validate(current: str, target: str, has_applied: bool) -> None:
         raise TransitionError(f"Can't move an application from '{current}' to '{target}'.")
 
 
-def implicit_status(fit_or_priority: float | None, review_threshold: float, closed: bool) -> str:
+def implicit_status(fit_or_priority: float | None, review_threshold: float, closed: bool, excluded: bool = False) -> str:
+    """Mirrors queries.workflow_status_expr's SQL CASE -- keep both in sync."""
     if closed:
         return "closed"
+    if excluded:
+        return "dismissed"
     if fit_or_priority is not None and fit_or_priority >= review_threshold:
         return "needs_review"
     return "discovered"

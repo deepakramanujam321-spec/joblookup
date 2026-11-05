@@ -290,11 +290,28 @@ def test_applied_jobs_leave_recommended(client, make_job):
     assert applied_id not in ids("recommended") and applied_id in ids("applied")
 
 
-def test_out_of_reach_experience_is_kept_out_of_recommended(client, make_job, engine):
+def test_hard_excluded_jobs_are_invisible_everywhere_except_dismissed(client, make_job, engine):
+    """An excluded company / deal-breaker phrase / big experience gap is not
+    just scored down -- it should never cost the user a second of review,
+    in any view, including "All". It still shows up under Dismissed so the
+    system's reasoning is auditable."""
     reachable, out_of_reach = make_job(), make_job()
     with engine.begin() as conn:
         conn.execute(sa.update(jobs).where(jobs.c.id == out_of_reach).values(
-            match_highlights={"experience": {"status": "below", "need": 6, "have": 2}}))
-    recommended = {j["id"] for j in client.get("/api/v2/jobs", params={"view": "recommended"}).json()["items"]}
-    assert reachable in recommended and out_of_reach not in recommended
-    assert out_of_reach in {j["id"] for j in client.get("/api/v2/jobs", params={"view": "all"}).json()["items"]}
+            match_highlights={"experience": {"status": "below", "need": 6, "have": 2}, "excluded": True}))
+
+    def ids(view):
+        return {j["id"] for j in client.get("/api/v2/jobs", params={"view": view}).json()["items"]}
+    for view in ("recommended", "all", "recent", "needs_review", "stale"):
+        assert out_of_reach not in ids(view), view
+    assert reachable in ids("all") and reachable in ids("recommended")
+    assert out_of_reach in ids("dismissed")
+
+    detail = client.get(f"/api/v2/jobs/{out_of_reach}").json()
+    assert detail["workflow_status"] == "dismissed"
+
+    # the overview's "new" count shouldn't nag about a job the user will never see
+    before = client.get("/api/v2/overview").json()["new_this_week"]
+    with engine.begin() as conn:
+        conn.execute(sa.update(jobs).where(jobs.c.id == out_of_reach).values(discovered_at=sa.func.now()))
+    assert client.get("/api/v2/overview").json()["new_this_week"] == before

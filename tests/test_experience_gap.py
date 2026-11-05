@@ -24,3 +24,18 @@ def test_stretch_unstated_and_unknown_are_not_ruled_out():
         result = matching.assess(job(experience_min_years=years), profile, "", STRONG)
         assert matching.experience_gap(job(experience_min_years=years), profile)["status"] == status
         assert not result["deal_breakers"] and result["overall_score"] > matching.DEAL_BREAKER_CAP
+
+
+def test_hard_exclude_covers_company_phrase_and_experience_but_never_salary():
+    """hard_exclude drives auto-dismissal everywhere the user browses (see
+    queries._not_excluded); it must never fire for salary alone, since an
+    unstated or below-floor salary stays visible with just a badge."""
+    excluded_company = job(company="Oraczen Labs")
+    deal_breaker = {**PROFILE, "deal_breakers": ["on-call"]}
+    below_floor_salary = job(salary_min=100_000, salary_max=150_000, salary_currency="INR", salary_period="year")
+    assert matching.hard_exclude(excluded_company, PROFILE)
+    assert matching.hard_exclude(job(title="Needs on-call rotation"), deal_breaker)
+    assert matching.hard_exclude(job(experience_min_years=8), TWO_YEARS)
+    assert not matching.hard_exclude(below_floor_salary, PROFILE)
+    assert not matching.hard_exclude(job(experience_min_years=3), TWO_YEARS)  # stretch, not excluded
+    assert not matching.hard_exclude(job(), PROFILE)

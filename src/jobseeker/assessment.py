@@ -212,6 +212,10 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
         "semantic": llm_called or (bool(cached) and run_llm and cached["llm_score"] is not None),
         "salary": salary_status(job, result["components"]["compensation"]),
         "experience": matching.experience_gap(job, profile),
+        # Excluded company / deal-breaker phrase / experience gap: hard-filtered
+        # from every browsing view, not just scored down. Salary is never part
+        # of this -- it stays visible with just the badge above.
+        "excluded": matching.hard_exclude(job, profile),
         "inputs": scoring_inputs(profile_record["version"], resume_text),
     }
     conn.execute(

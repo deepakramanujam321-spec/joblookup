@@ -49,11 +49,21 @@ class JobFilters:
     page_size: int = 25
 
 
+def _not_excluded():
+    """True unless matching.hard_exclude flagged the job (excluded company,
+    a stated deal-breaker phrase, or an experience gap well beyond a
+    stretch). Those never show up outside the Dismissed view -- reviewing
+    them is a waste of time, not just a lower score. Salary is never part
+    of this: unstated or below-floor pay stays visible with just a badge."""
+    return sa.func.coalesce(jobs.c.match_highlights["excluded"].as_boolean(), False).is_(False)
+
+
 def workflow_status_expr(review_threshold: float):
     return sa.func.coalesce(
         applications.c.status,
         sa.case(
             (sa.or_(jobs.c.verification_status == "closed", jobs.c.listing_quality == "not_a_listing"), "closed"),
+            (sa.func.coalesce(jobs.c.match_highlights["excluded"].as_boolean(), False), "dismissed"),
             (sa.func.coalesce(jobs.c.priority_score, jobs.c.fit_score) >= review_threshold, "needs_review"),
             else_="discovered",
         ),
@@ -62,21 +72,24 @@ def workflow_status_expr(review_threshold: float):
 
 def _apply_filters(query, f: JobFilters, owner: str, review_threshold: float, stale_days: int, now: datetime):
     status_expr = workflow_status_expr(review_threshold)
-    live = sa.and_(jobs.c.verification_status != "closed", jobs.c.listing_quality == "ok", jobs.c.duplicate_of_id.is_(None))
+    not_excluded = _not_excluded()
+    live = sa.and_(jobs.c.verification_status != "closed", jobs.c.listing_quality == "ok", jobs.c.duplicate_of_id.is_(None), not_excluded)
     stale = sa.or_(
         jobs.c.verification_status.in_(("verification_failed", "source_unavailable")),
         jobs.c.last_verified_at < now - timedelta(days=stale_days),
         sa.and_(jobs.c.last_verified_at.is_(None), sa.func.coalesce(jobs.c.last_seen_at, jobs.c.discovered_at) < now - timedelta(days=stale_days)),
     )
     views = {
-        "all": sa.true(),
+        # "all" still shows closed/duplicate/not-a-listing postings for audit;
+        # hard-excluded jobs are the one thing even "all" leaves out, since
+        # they're never worth seeing again -- find them under "Dismissed".
+        "all": not_excluded,
         # only jobs still to act on: once applied, a job moves to "applied"
-        "recommended": sa.and_(live, status_expr.in_(lifecycle.NOT_YET_APPLIED), sa.func.coalesce(
-            jobs.c.match_highlights["experience"]["status"].as_string(), "") != "below"),
+        "recommended": sa.and_(live, status_expr.in_(lifecycle.NOT_YET_APPLIED)),
         "needs_review": sa.and_(live, status_expr == "needs_review"),
         "saved": applications.c.saved.is_(True),
-        "recent": sa.and_(jobs.c.listing_quality == "ok", jobs.c.discovered_at >= now - timedelta(days=7)),
-        "stale": sa.and_(jobs.c.listing_quality == "ok", jobs.c.verification_status != "closed", stale),
+        "recent": sa.and_(jobs.c.listing_quality == "ok", jobs.c.discovered_at >= now - timedelta(days=7), not_excluded),
+        "stale": sa.and_(jobs.c.listing_quality == "ok", jobs.c.verification_status != "closed", not_excluded, stale),
         "applied": status_expr.in_(lifecycle.APPLIED),
         "dismissed": status_expr.in_(lifecycle.RULED_OUT),
         "closed": status_expr == "closed",
@@ -191,7 +204,7 @@ def job_detail(conn: Connection, owner: str, job_id: int, review_threshold: floa
     closed = job["verification_status"] == "closed" or job["listing_quality"] == "not_a_listing"
     implicit = lifecycle.implicit_status(
         float(job["priority_score"]) if job["priority_score"] is not None else (float(job["fit_score"]) if job["fit_score"] is not None else None),
-        review_threshold, closed,
+        review_threshold, closed, bool((job.get("match_highlights") or {}).get("excluded")),
     )
     return {
         "job": job,
@@ -209,15 +222,16 @@ def overview(conn: Connection, owner: str, review_threshold: float, high_thresho
     now = datetime.now(timezone.utc)
     joined = jobs.outerjoin(applications, sa.and_(applications.c.job_id == jobs.c.id, applications.c.owner == owner))
     status_expr = workflow_status_expr(review_threshold)
-    live = sa.and_(jobs.c.verification_status != "closed", jobs.c.listing_quality == "ok", jobs.c.duplicate_of_id.is_(None))
+    not_excluded = _not_excluded()
+    live = sa.and_(jobs.c.verification_status != "closed", jobs.c.listing_quality == "ok", jobs.c.duplicate_of_id.is_(None), not_excluded)
     last_collect = conn.execute(
         sa.select(runs).where(runs.c.run_type == "collect").order_by(runs.c.started_at.desc()).limit(1)
     ).mappings().first()
     since = last_collect["started_at"] if last_collect else now - timedelta(days=7)
     has_feedback = sa.exists().where(job_feedback.c.job_id == jobs.c.id, job_feedback.c.owner == owner)
     counts = conn.execute(sa.select(
-        sa.func.count().filter(sa.and_(jobs.c.discovered_at >= now - timedelta(days=7), jobs.c.listing_quality == "ok")).label("new_this_week"),
-        sa.func.count().filter(sa.and_(jobs.c.discovered_at >= since, jobs.c.listing_quality == "ok")).label("new_last_run"),
+        sa.func.count().filter(sa.and_(jobs.c.discovered_at >= now - timedelta(days=7), jobs.c.listing_quality == "ok", not_excluded)).label("new_this_week"),
+        sa.func.count().filter(sa.and_(jobs.c.discovered_at >= since, jobs.c.listing_quality == "ok", not_excluded)).label("new_last_run"),
         sa.func.count().filter(sa.and_(live, status_expr == "needs_review")).label("worth_reviewing"),
         sa.func.count().filter(sa.and_(live, jobs.c.priority_score >= high_threshold,
                                        status_expr.in_(("discovered", "needs_review", "shortlisted")))).label("high_priority"),
