@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useDraftMutations, useDrafts, useIntegrations, useResumes, useTaskMutations, useUpdateApplication } from "../api/hooks";
 import type { Draft, JobDetail, WorkflowStatus } from "../api/types";
 import { absolute, STATUS_LABELS, title } from "../lib/format";
-import { Badge, EmptyState, ErrorState, Skeleton, Time, errorMessage, useConfirm, useToast } from "./ui";
+import { Badge, EmptyState, ErrorState, Skeleton, Spinner, Time, errorMessage, useConfirm, useToast } from "./ui";
 
 const STATUS_FLOW: WorkflowStatus[] = ["needs_review", "shortlisted", "draft_ready", "applied", "recruiter_response", "interview", "offer", "rejected", "withdrawn", "dismissed", "closed"];
 
@@ -72,7 +72,7 @@ function TrackingPanel({ detail }: { detail: JobDetail }) {
       </div>
       <div className="field"><label htmlFor="app-follow">Next follow-up</label><input id="app-follow" className="input" type="date" value={form.next_follow_up_at} onChange={(e) => setForm({ ...form, next_follow_up_at: e.target.value })} /></div>
       <div className="field"><label htmlFor="app-notes">Notes</label><textarea id="app-notes" className="textarea" style={{ minHeight: 90 }} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
-      <div className="row" style={{ justifyContent: "flex-end" }}><button className="btn primary" disabled={!dirty || update.isPending} onClick={save}>Save details</button></div>
+      <div className="row" style={{ justifyContent: "flex-end" }}><button className="btn primary" disabled={!dirty || update.isPending} onClick={save}>{update.isPending ? <><Spinner /> Saving…</> : "Save details"}</button></div>
     </section>
   );
 }
@@ -97,7 +97,8 @@ function TasksPanel({ detail }: { detail: JobDetail }) {
             <span style={{ textDecoration: t.done_at ? "line-through" : undefined }}><Badge>{title(t.kind)}</Badge> {t.title}</span>
           </label>
           <span className="small muted">{t.due_at ? <Time iso={t.due_at} /> : "No date"}</span>
-          <button className="btn ghost sm" aria-label={`Delete ${t.title}`} onClick={() => m.remove.mutate(t.id)}>✕</button>
+          <button className="btn ghost sm" aria-label={`Delete ${t.title}`} disabled={m.remove.isPending && m.remove.variables === t.id}
+            onClick={() => m.remove.mutate(t.id)}>{m.remove.isPending && m.remove.variables === t.id ? <Spinner /> : "✕"}</button>
         </div>
       ))}
       <div className="stack tight">
@@ -227,12 +228,12 @@ function DraftsPanel({ detail }: { detail: JobDetail }) {
             <div className="field"><label htmlFor="d-cover">Cover letter</label><textarea id="d-cover" className="textarea" style={{ minHeight: 220 }} value={edit.cover_letter} onChange={(e) => setEdit({ ...edit, cover_letter: e.target.value })} /></div>
           )}
           <div className="row wrap">
-            <button className="btn primary" disabled={!dirty || !edit.body.trim() || m.save.isPending} onClick={saveEdit}>Save as new version</button>
+            <button className="btn primary" disabled={!dirty || !edit.body.trim() || m.save.isPending} onClick={saveEdit}>{m.save.isPending ? <><Spinner /> Saving…</> : "Save as new version"}</button>
             <button className="btn" onClick={copy}>Copy</button>
             {gmailConnected ? (
               <button className="btn" disabled={!!dirty || m.gmail.isPending} title={dirty ? "Save your edits first" : "Saves a draft in Gmail; nothing is sent"}
                 onClick={() => m.gmail.mutate({ draftId: current.id }, { onSuccess: () => toast("Saved to Gmail drafts (not sent)"), onError: (e) => toast(errorMessage(e), "error") })}>
-                {m.gmail.isPending ? "Saving…" : current.gmail_status === "saved" ? "Saved in Gmail ✓" : "Save to Gmail drafts"}
+                {m.gmail.isPending ? <><Spinner /> Saving…</> : current.gmail_status === "saved" ? "Saved in Gmail ✓" : "Save to Gmail drafts"}
               </button>
             ) : (
               <Link className="btn ghost" to="/settings">Connect Gmail to save drafts</Link>
@@ -241,7 +242,11 @@ function DraftsPanel({ detail }: { detail: JobDetail }) {
           <div className="row wrap" style={{ gap: 6 }}>
             <Badge tone={GMAIL_STATUS[current.gmail_status].tone}>{GMAIL_STATUS[current.gmail_status].label}</Badge>
             {current.gmail_status === "saved" && current.gmail_open_url && <a className="small" href={current.gmail_open_url} target="_blank" rel="noopener noreferrer">Open in Gmail ↗</a>}
-            {current.gmail_status === "saved" && <button className="btn ghost sm" onClick={() => m.refreshGmail.mutate(current.id)}>Check Gmail</button>}
+            {current.gmail_status === "saved" && (
+              <button className="btn ghost sm" disabled={m.refreshGmail.isPending} onClick={() => m.refreshGmail.mutate(current.id)}>
+                {m.refreshGmail.isPending ? <><Spinner /> Checking…</> : "Check Gmail"}
+              </button>
+            )}
             {current.gmail_error && current.gmail_status !== "saved" && <span className="small muted">{current.gmail_error}</span>}
             <span className="small muted">Draft ≠ application: mark the job as applied once you've submitted it.</span>
           </div>
@@ -267,7 +272,7 @@ function DraftsPanel({ detail }: { detail: JobDetail }) {
       {!current && (
         <div className="stack tight">
           <textarea className="textarea" aria-label="Write a draft" placeholder="Write your application email…" value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} />
-          <div><button className="btn" disabled={!edit.body.trim() || m.save.isPending} onClick={saveEdit}>Save draft</button></div>
+          <div><button className="btn" disabled={!edit.body.trim() || m.save.isPending} onClick={saveEdit}>{m.save.isPending ? <><Spinner /> Saving…</> : "Save draft"}</button></div>
         </div>
       )}
     </section>

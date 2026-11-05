@@ -3,7 +3,7 @@ import { useFeedbackCategories, useJob, useSubmitFeedback, useUpdateApplication,
 import type { JobDetail, MatchComponent, WorkflowStatus } from "../api/types";
 import { absolute, evidenceLabel, FRESHNESS_LABELS, postedLabel, SOURCE_LABELS, STATUS_LABELS, title } from "../lib/format";
 import { ApplicationWorkspace } from "./ApplicationWorkspace";
-import { Badge, Bar, ErrorState, Modal, ExperienceBadge, SalaryBadge, Score, Skeleton, Time, errorMessage, useConfirm, useToast } from "./ui";
+import { Badge, Bar, ErrorState, Modal, ExperienceBadge, SalaryBadge, Score, Skeleton, Spinner, Time, errorMessage, useConfirm, useToast } from "./ui";
 
 type Tab = "match" | "description" | "application" | "history";
 
@@ -40,6 +40,12 @@ function Header({ detail }: { detail: JobDetail }) {
   const [feedbackOpen, setFeedbackOpen] = useState<null | "feedback" | "report">(null);
   const status = detail.workflow_status;
   const saved = detail.application?.saved ?? false;
+  // update is shared across every action below (save toggle, shortlist, mark
+  // applied, dismiss) -- disable them all while any one is in flight so a
+  // slow round trip (Render free tier) can't register two clicks, and show
+  // the spinner on whichever button was actually clicked.
+  const pendingStatus = update.isPending ? update.variables?.status : undefined;
+  const pendingSaved = update.isPending && update.variables?.saved !== undefined;
   const freshness = job.priority_explanation?.freshness;
   const closed = job.verification_status === "closed";
 
@@ -93,23 +99,25 @@ function Header({ detail }: { detail: JobDetail }) {
       {job.listing_quality === "not_a_listing" && <div className="notice warn">This entry is a search-results page, not an individual job posting. It's kept for reference but excluded from recommendations.</div>}
       <div className="actions">
         <a className="btn primary" href={job.url} target="_blank" rel="noopener noreferrer">View original job ↗</a>
-        <button className="btn" aria-pressed={saved} onClick={() => update.mutate({ saved: !saved }, { onError: (e) => toast(errorMessage(e), "error") })}>
-          {saved ? "★ Saved" : "☆ Save"}
+        <button className="btn" aria-pressed={saved} disabled={update.isPending} onClick={() => update.mutate({ saved: !saved }, { onError: (e) => toast(errorMessage(e), "error") })}>
+          {pendingSaved ? <Spinner /> : saved ? "★ Saved" : "☆ Save"}
         </button>
         {["discovered", "needs_review", "dismissed", "closed"].includes(status) && (
-          <button className="btn" onClick={() => setStatus("shortlisted")}>Shortlist</button>
+          <button className="btn" disabled={update.isPending} onClick={() => setStatus("shortlisted")}>
+            {pendingStatus === "shortlisted" ? <><Spinner /> Shortlisting…</> : "Shortlist"}
+          </button>
         )}
         {!["applied", "recruiter_response", "interview", "offer", "rejected", "withdrawn"].includes(status) && (
-          <button className="btn" onClick={() => setStatus("applied", { confirmText: "Only mark this once you've actually submitted the application. Opening the job or drafting an email doesn't count." })}>
-            Mark applied
+          <button className="btn" disabled={update.isPending} onClick={() => setStatus("applied", { confirmText: "Only mark this once you've actually submitted the application. Opening the job or drafting an email doesn't count." })}>
+            {pendingStatus === "applied" ? <><Spinner /> Marking…</> : "Mark applied"}
           </button>
         )}
         {!["dismissed", "rejected", "withdrawn"].includes(status) && (
-          <button className="btn ghost" onClick={async () => {
+          <button className="btn ghost" disabled={update.isPending} onClick={async () => {
             if (await confirm({ title: "Dismiss this job?", body: "It moves to the Dismissed view. You can restore it later, and you'll be asked why so ranking can learn.", confirmLabel: "Dismiss" })) {
               update.mutate({ status: "dismissed" }, { onSuccess: () => setFeedbackOpen("feedback"), onError: (e) => toast(errorMessage(e), "error") });
             }
-          }}>Dismiss</button>
+          }}>{pendingStatus === "dismissed" ? <><Spinner /> Dismissing…</> : "Dismiss"}</button>
         )}
         <button className="btn ghost" onClick={() => setFeedbackOpen("feedback")}>Feedback</button>
         <details className="menu">
@@ -148,7 +156,7 @@ function FeedbackDialog({ jobId, mode, onClose }: { jobId: number; mode: "feedba
             onClose();
           },
           onError: (e) => toast(errorMessage(e), "error"),
-        })}>Submit</button>
+        })}>{submit.isPending ? <><Spinner /> Submitting…</> : "Submit"}</button>
       </>}>
       <fieldset className="stack tight" style={{ border: 0, padding: 0, margin: 0 }}>
         <legend className="sr-only">Category</legend>

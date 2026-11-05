@@ -63,12 +63,12 @@ function ServiceCard({ service, name, state, configured, description }: { servic
       <div className="row">
         {!connected && <button className="btn primary" disabled={!configured || m.connect.isPending} onClick={() => m.connect.mutate(service, { onError: (e) => toast(errorMessage(e), "error") })}>{state ? "Reconnect" : "Connect"}</button>}
         {state && (
-          <button className="btn danger" onClick={async () => {
+          <button className="btn danger" disabled={m.disconnect.isPending} onClick={async () => {
             const deleteImported = service === "drive" && (await confirm({ title: "Also delete imported documents?", body: "Remove JobLookup's copies of documents imported from Drive? (Files in Drive are never touched.)", confirmLabel: "Delete copies too" }));
             if (await confirm({ title: `Disconnect ${name}?`, body: "Stored credentials are deleted from JobLookup.", confirmLabel: "Disconnect", danger: true })) {
               m.disconnect.mutate({ service, deleteImported }, { onSuccess: () => toast(`${name} disconnected`), onError: (e) => toast(errorMessage(e), "error") });
             }
-          }}>Disconnect</button>
+          }}>{m.disconnect.isPending ? "Disconnecting…" : "Disconnect"}</button>
         )}
       </div>
     </section>
@@ -132,8 +132,16 @@ function DrivePanel({ connected, pickerReady }: { connected: boolean; pickerRead
         <div key={d.id} className="row between">
           <div className="grow"><strong className="ellipsis">{d.name}</strong>
             <div className="small muted">{d.status === "done" ? `${d.chars ?? 0} characters` : `Failed: ${d.error}`} · imported <Time iso={d.imported_at} /></div></div>
-          {connected && <button className="btn sm" onClick={() => m.refreshDoc.mutate(d.id, { onSuccess: (r) => toast(r.changed ? "Updated from Drive" : "No changes in Drive"), onError: (e) => toast(errorMessage(e), "error") })}>Refresh</button>}
-          <button className="btn ghost sm danger" onClick={() => m.deleteDoc.mutate(d.id)}>Remove</button>
+          {connected && (
+            <button className="btn sm" disabled={m.refreshDoc.isPending && m.refreshDoc.variables === d.id}
+              onClick={() => m.refreshDoc.mutate(d.id, { onSuccess: (r) => toast(r.changed ? "Updated from Drive" : "No changes in Drive"), onError: (e) => toast(errorMessage(e), "error") })}>
+              {m.refreshDoc.isPending && m.refreshDoc.variables === d.id ? "Checking…" : "Refresh"}
+            </button>
+          )}
+          <button className="btn ghost sm danger" disabled={m.deleteDoc.isPending && m.deleteDoc.variables === d.id}
+            onClick={() => m.deleteDoc.mutate(d.id)}>
+            {m.deleteDoc.isPending && m.deleteDoc.variables === d.id ? "Removing…" : "Remove"}
+          </button>
         </div>
       ))}
     </section>

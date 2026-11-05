@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useInsightMutations, useInsights } from "../api/hooks";
-import { Badge, EmptyState, ErrorState, Skeleton, Time, errorMessage, useConfirm, useToast } from "../components/ui";
+import { Badge, EmptyState, ErrorState, Skeleton, Spinner, Time, errorMessage, useConfirm, useToast } from "../components/ui";
 import { title } from "../lib/format";
 
 export function InsightsPage() {
@@ -20,7 +20,7 @@ export function InsightsPage() {
           if (await confirm({ title: "Reset learned preferences?", body: "Ranking goes back to your profile and fit alone. Your past feedback stays visible but stops influencing ranking.", confirmLabel: "Reset", danger: true })) {
             m.reset.mutate(undefined, { onSuccess: () => toast("Learning reset"), onError: (e) => toast(errorMessage(e), "error") });
           }
-        }}>Reset learning</button>
+        }}>{m.reset.isPending ? <><Spinner /> Resetting…</> : "Reset learning"}</button>
       </div>
       <div className="two-col">
         <div className="stack">
@@ -37,7 +37,10 @@ export function InsightsPage() {
                         <strong>{title(p.dimension)}: {p.dimension === "category" ? title(p.value) : p.value}</strong></div>
                       <p className="small muted" style={{ marginTop: 4 }}>{p.explanation}</p>
                     </div>
-                    <button className="btn sm" onClick={() => m.toggle.mutate({ id: p.id, disabled: true })}>Turn off</button>
+                    <button className="btn sm" disabled={m.toggle.isPending && m.toggle.variables?.id === p.id}
+                      onClick={() => m.toggle.mutate({ id: p.id, disabled: true })}>
+                      {m.toggle.isPending && m.toggle.variables?.id === p.id ? <Spinner /> : "Turn off"}
+                    </button>
                   </div>
                 ))}
               </div>
@@ -53,7 +56,12 @@ export function InsightsPage() {
                     <span className="small muted"> · {p.positive} positive / {p.negative} negative</span>
                     <p className="small muted">{p.disabled_by_user ? "Turned off by you." : p.explanation}</p>
                   </div>
-                  {p.disabled_by_user && <button className="btn sm" onClick={() => m.toggle.mutate({ id: p.id, disabled: false })}>Turn on</button>}
+                  {p.disabled_by_user && (
+                    <button className="btn sm" disabled={m.toggle.isPending && m.toggle.variables?.id === p.id}
+                      onClick={() => m.toggle.mutate({ id: p.id, disabled: false })}>
+                      {m.toggle.isPending && m.toggle.variables?.id === p.id ? <Spinner /> : "Turn on"}
+                    </button>
+                  )}
                 </div>
               ))}
             </section>
@@ -81,7 +89,10 @@ export function InsightsPage() {
               <div key={f.id} className="row between">
                 <span className="grow ellipsis"><Link to={`/jobs/${f.job_id}`}>{f.title}</Link> <span className="muted">· {title(f.category)}</span></span>
                 <span className="small muted"><Time iso={f.created_at} /></span>
-                <button className="btn ghost sm" aria-label="Delete feedback" onClick={() => m.deleteFeedback.mutate(f.id)}>✕</button>
+                <button className="btn ghost sm" aria-label="Delete feedback" disabled={m.deleteFeedback.isPending && m.deleteFeedback.variables === f.id}
+                  onClick={() => m.deleteFeedback.mutate(f.id)}>
+                  {m.deleteFeedback.isPending && m.deleteFeedback.variables === f.id ? <Spinner /> : "✕"}
+                </button>
               </div>
             ))}
             {data.learning_reset_at && <p className="hint">Learning was reset <Time iso={data.learning_reset_at} />; earlier feedback doesn't count.</p>}

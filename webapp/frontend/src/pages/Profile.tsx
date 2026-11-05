@@ -370,20 +370,30 @@ function ResumesPanel() {
           <span className="small muted">{r.filename} · {Math.max(1, Math.round(r.size_bytes / 1024))} KB · uploaded <Time iso={r.uploaded_at} />{r.purpose ? ` · ${r.purpose}` : ""}</span>
           {r.extraction_status === "failed" && <div className="notice bad small">Couldn't read text: {r.extraction_error}</div>}
           <div className="row wrap">
-            {!r.is_default && <button className="btn sm" onClick={() => m.update.mutate({ id: r.id, is_default: true })}>Make default</button>}
+            {!r.is_default && (
+              <button className="btn sm" disabled={m.update.isPending && m.update.variables?.id === r.id}
+                onClick={() => m.update.mutate({ id: r.id, is_default: true })}>
+                {m.update.isPending && m.update.variables?.id === r.id ? "Setting…" : "Make default"}
+              </button>
+            )}
             <a className="btn sm" href={`/api/v2/resumes/${r.id}/file`}>Download</a>
             <button className="btn sm" onClick={() => { setReplacing(r); fileRef.current?.click(); }}>Upload new version</button>
-            {r.source === "drive" && <button className="btn sm" onClick={() => m.refreshDrive.mutate(r.id, { onSuccess: (x) => toast(x.changed ? "Imported the updated Drive file as a new version" : "No changes in Drive"), onError: (e) => toast(errorMessage(e), "error") })}>Refresh from Drive</button>}
+            {r.source === "drive" && (
+              <button className="btn sm" disabled={m.refreshDrive.isPending && m.refreshDrive.variables === r.id}
+                onClick={() => m.refreshDrive.mutate(r.id, { onSuccess: (x) => toast(x.changed ? "Imported the updated Drive file as a new version" : "No changes in Drive"), onError: (e) => toast(errorMessage(e), "error") })}>
+                {m.refreshDrive.isPending && m.refreshDrive.variables === r.id ? "Checking…" : "Refresh from Drive"}
+              </button>
+            )}
             {r.extraction_status === "done" && (
               <button className="btn sm" disabled={m.extract.isPending} onClick={() => m.extract.mutate(r.id, { onSuccess: (x) => setReviewing(x), onError: (e) => toast(errorMessage(e), "error") })}>
                 {m.extract.isPending ? "Reading…" : "Extract to profile…"}
               </button>
             )}
-            <button className="btn ghost sm danger" onClick={async () => {
+            <button className="btn ghost sm danger" disabled={m.remove.isPending && m.remove.variables === r.id} onClick={async () => {
               if (await confirm({ title: "Delete this resume?", body: `“${r.display_name}” v${r.version} will be removed. Drafts that used it keep their text.`, confirmLabel: "Delete", danger: true })) {
                 m.remove.mutate(r.id, { onError: (e) => toast(errorMessage(e), "error") });
               }
-            }}>Delete</button>
+            }}>{m.remove.isPending && m.remove.variables === r.id ? "Deleting…" : "Delete"}</button>
           </div>
         </div>
       ))}
