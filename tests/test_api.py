@@ -1,4 +1,5 @@
 import io
+import re
 import zipfile
 
 import pytest
@@ -315,3 +316,34 @@ def test_hard_excluded_jobs_are_invisible_everywhere_except_dismissed(client, ma
     with engine.begin() as conn:
         conn.execute(sa.update(jobs).where(jobs.c.id == out_of_reach).values(discovered_at=sa.func.now()))
     assert client.get("/api/v2/overview").json()["new_this_week"] == before
+
+
+def test_rerank_writes_every_job_in_one_round_trip(client, make_job, engine):
+    """preferences.rerank used to UPDATE one job at a time -- fine for a
+    handful of jobs, but a feedback submission reranks every scored job, and
+    with hundreds of jobs that meant hundreds of round trips to the database
+    per click. It must now write them all in a single statement."""
+    from jobseeker import preferences
+
+    ids = [make_job(url=f"https://jobs.lever.co/rerank/{i}", title="Backend Engineer", company=f"C{i}") for i in range(30)]
+    with engine.begin() as conn:
+        conn.execute(sa.update(jobs).where(jobs.c.id.in_(ids)).values(fit_score=60.0))
+
+    update_statements = []
+    def _count(conn, cursor, statement, *a, **kw):
+        if re.search(r"(?i)\bupdate\s+jobseeker\.jobs\b", statement):
+            update_statements.append(statement)
+    sa.event.listen(engine, "before_cursor_execute", _count)
+    try:
+        with engine.begin() as conn:
+            reranked = preferences.rerank(conn, "default")
+    finally:
+        sa.event.remove(engine, "before_cursor_execute", _count)
+
+    assert reranked == len(ids)
+    assert len(update_statements) == 1, update_statements  # not one per job
+    with engine.begin() as conn:
+        scores = conn.execute(sa.select(jobs.c.id, jobs.c.priority_score, jobs.c.priority_explanation)
+                              .where(jobs.c.id.in_(ids))).all()
+    assert len(scores) == len(ids)
+    assert all(s.priority_score is not None and s.priority_explanation for s in scores)

@@ -143,13 +143,21 @@ def load_learned(conn: Connection, owner: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def persist_priority(conn: Connection, job: dict, fit: float | None, profile: dict, candidate_skills: set[str], learned: list[dict], now: datetime) -> None:
+def compute_priority(job: dict, fit: float | None, profile: dict, candidate_skills: set[str], learned: list[dict], now: datetime) -> tuple[float, dict]:
+    """Pure computation, no DB -- split out of persist_priority so a batch
+    re-rank (preferences.rerank) can compute every job in Python first and
+    write them all in one round trip, instead of one UPDATE per job."""
     signals = learning.ranking_signals(learning.job_signals(job, candidate_skills))
     stale_days = (profile.get("thresholds") or {}).get("stale_days", 14)
     score, explanation = priority.compute(job, fit, signals, learned, stale_days, now)
+    return score, json.loads(json.dumps(explanation, default=str))
+
+
+def persist_priority(conn: Connection, job: dict, fit: float | None, profile: dict, candidate_skills: set[str], learned: list[dict], now: datetime) -> None:
+    score, explanation = compute_priority(job, fit, profile, candidate_skills, learned, now)
     conn.execute(
         sa.update(jobs).where(jobs.c.id == job["id"]).values(
-            priority_score=score, priority_explanation=json.loads(json.dumps(explanation, default=str))
+            priority_score=score, priority_explanation=explanation
         )
     )
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Connection
 
@@ -77,12 +78,25 @@ def rerank(conn: Connection, owner: str, record: dict | None = None, resume: str
     skills = matching.candidate_skill_set(record["data"], resume)
     learned = assessment.load_learned(conn, owner)
     now = datetime.now(timezone.utc)
-    count = 0
-    for job in conn.execute(sa.select(jobs).where(jobs.c.fit_score.is_not(None))).mappings():
-        job = dict(job)
-        assessment.persist_priority(conn, job, float(job["fit_score"]), record["data"], skills, learned, now)
-        count += 1
-    return count
+    # One UPDATE per job here used to mean one round trip per job -- fine
+    # locally, but over the pooler from Render it turned a feedback
+    # submission that touches every scored job (hundreds) into a request
+    # that could take tens of seconds. Compute every job's priority in
+    # Python first (cheap, no DB), then write them all in a single
+    # statement via a CASE per id.
+    scored = [
+        (job["id"], *assessment.compute_priority(dict(job), float(job["fit_score"]), record["data"], skills, learned, now))
+        for job in conn.execute(sa.select(jobs).where(jobs.c.fit_score.is_not(None))).mappings()
+    ]
+    if scored:
+        score_case = sa.case(*((jobs.c.id == jid, score) for jid, score, _ in scored))
+        # type_coerce (not cast(json.dumps(...))) -- the JSONB bind processor
+        # already serializes the dict; dumping it ourselves first double-
+        # encodes it into a JSON string instead of a JSON object.
+        explanation_case = sa.case(*((jobs.c.id == jid, sa.type_coerce(expl, JSONB)) for jid, _, expl in scored))
+        conn.execute(sa.update(jobs).where(jobs.c.id.in_([jid for jid, _, _ in scored])).values(
+            priority_score=score_case, priority_explanation=explanation_case))
+    return len(scored)
 
 
 def evaluation(conn: Connection, owner: str) -> dict:
