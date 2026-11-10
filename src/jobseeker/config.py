@@ -37,11 +37,11 @@ ENV_VARS: dict[str, str] = {
     "DB_POOL_SIZE": "Optional: connection pool size (default 3).",
     # collection + LLM (LiteLLM: one provider key is enough)
     "BRAVE_API_KEY": "Brave Search API key for discovery.",
-    "LLM_MODEL": "Optional: explicit LiteLLM model string; otherwise auto-detected from the key below.",
-    "OPENAI_API_KEY": "LLM provider key (any one of these four).",
-    "ANTHROPIC_API_KEY": "LLM provider key (any one of these four).",
-    "GEMINI_API_KEY": "LLM provider key (any one of these four).",
-    "GROQ_API_KEY": "LLM provider key (any one of these four).",
+    "LLM_MODEL": "Optional: preferred LiteLLM model string (tried first); otherwise the first provider with a key is primary.",
+    "OPENAI_API_KEY": "LLM provider key. Set more than one provider's key and the others become automatic fallbacks.",
+    "ANTHROPIC_API_KEY": "LLM provider key (fallback or primary, see OPENAI_API_KEY).",
+    "GEMINI_API_KEY": "Google AI Studio key for Gemini (has a free tier); fallback or primary, see OPENAI_API_KEY.",
+    "GROQ_API_KEY": "LLM provider key (fallback or primary, see OPENAI_API_KEY).",
     "MAX_LLM_CALLS_PER_RUN": "Optional: cost cap on semantic scoring calls per run (default 60).",
     # digest email
     "GMAIL_ADDRESS": "Sender address for the digest (legacy alias of SMTP_USERNAME).",

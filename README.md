@@ -71,7 +71,7 @@ Settings → Secrets and variables → Actions:
 |---|---|
 | `DATABASE_URL` | everything |
 | `BRAVE_API_KEY` | collection (free tier: 2,000 queries/month) |
-| `OPENAI_API_KEY` (or another provider key, optionally `LLM_MODEL`) | semantic scoring + digest drafts |
+| `OPENAI_API_KEY` and/or `GEMINI_API_KEY` (also `GROQ_API_KEY`, `ANTHROPIC_API_KEY`; optionally `LLM_MODEL`) | semantic scoring + digest drafts. Set **two** providers and the second takes over automatically if the first fails (expired key, no credits). Gemini's key comes from Google AI Studio and has a free tier |
 | `GMAIL_ADDRESS` + `GMAIL_APP_PASSWORD` (or `SMTP_*`) | Saturday digest |
 | `DASHBOARD_URL` *(optional)* | "Open in JobLookup" links in the digest |
 
@@ -85,7 +85,7 @@ Settings → Secrets and variables → Actions:
 |---|---|
 | `DATABASE_URL` | same as above |
 | `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` | HTTP Basic Auth for the whole app |
-| `OPENAI_API_KEY` (or other provider) | draft generation + resume extraction in the dashboard |
+| `OPENAI_API_KEY` and/or `GEMINI_API_KEY` | draft generation + resume extraction in the dashboard (same automatic fallback) |
 | `TOKEN_ENCRYPTION_KEY` | encrypts Google tokens at rest (any long random string; `generateValue` in render.yaml) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_API_KEY`, `GOOGLE_APP_ID` | optional Google integrations (below) |
 

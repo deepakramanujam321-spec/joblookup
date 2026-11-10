@@ -17,6 +17,10 @@ services:
       # Draft generation / resume extraction: any one LiteLLM provider key
       - key: OPENAI_API_KEY
         sync: false
+      # Optional second provider: used automatically if the one above fails
+      # (expired key, no credits). Google AI Studio key; it has a free tier.
+      - key: GEMINI_API_KEY
+        sync: false
       # Optional Google (Gmail drafts, Drive import) -- see README "Google integrations"
       - key: TOKEN_ENCRYPTION_KEY
         generateValue: true
