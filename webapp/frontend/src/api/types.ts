@@ -6,7 +6,7 @@ export type WorkflowStatus =
   | "interview" | "offer" | "rejected" | "withdrawn" | "dismissed" | "closed";
 
 export type SalaryStatus = "not_stated" | "meets" | "below" | "stated";
-export type ExperienceFit = { status: "not_stated" | "unknown" | "meets" | "stretch" | "below"; need: number | null; have: number | null };
+export type ExperienceFit = { status: "not_stated" | "unknown" | "meets" | "stretch" | "below"; need: number | null; have: number | null; implied?: boolean };
 
 export type VerificationStatus = "unchecked" | "active" | "closed" | "source_unavailable" | "verification_failed";
 

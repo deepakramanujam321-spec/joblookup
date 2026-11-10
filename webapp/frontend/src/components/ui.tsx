@@ -49,7 +49,8 @@ export function SalaryBadge({ job }: { job: SalaryFields }) {
 export function ExperienceBadge({ job }: { job: { match_highlights: { experience?: ExperienceFit } | null } }) {
   const exp = job.match_highlights?.experience;
   if (!exp || exp.status === "not_stated" || exp.need == null) return null;
-  const asks = `Asks ${exp.need}+ yrs`;
+  // implied: the posting states no years; this is what its level (Staff, Principal...) typically needs
+  const asks = exp.implied ? `Level needs ~${exp.need}+ yrs` : `Asks ${exp.need}+ yrs`;
   if (exp.status === "below") return <Badge tone="bad" title="Well beyond your experience: scored down and kept out of Recommended">{asks} · you have {exp.have}</Badge>;
   if (exp.status === "stretch") return <Badge tone="warn" title="Slightly above your experience: a stretch application">{asks} · stretch (you have {exp.have})</Badge>;
   if (exp.status === "meets") return <Badge tone="good" title="You meet the stated experience">{asks} · you have {exp.have}</Badge>;

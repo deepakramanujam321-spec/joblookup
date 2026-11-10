@@ -33,8 +33,13 @@ def _events(conn: Connection, owner: str, since: datetime | None) -> list[dict]:
     job_ids = {r.job_id for r in feedback_rows} | {r.job_id for r in app_rows}
     job_rows = {r["id"]: dict(r) for r in conn.execute(sa.select(*JOB_COLUMNS).where(jobs.c.id.in_(job_ids))).mappings()} if job_ids else {}
     events = []
+    seen: set[tuple[int, str]] = set()
     for r in feedback_rows:
-        if r.job_id in job_rows:
+        # One signal per job+category: a double-clicked Submit (easy on a slow
+        # server) must not count as two independent pieces of evidence -- two is
+        # all it takes to activate a learned preference.
+        if r.job_id in job_rows and (r.job_id, r.category) not in seen:
+            seen.add((r.job_id, r.category))
             events.append({"kind": "feedback", "job_id": r.job_id, "category": r.category, "job": job_rows[r.job_id]})
     for r in app_rows:
         if r.job_id in job_rows:

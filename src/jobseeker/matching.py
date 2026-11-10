@@ -19,8 +19,9 @@ from dataclasses import dataclass
 
 from . import normalize
 
-SCORING_VERSION = "v2.3"  # v2.1: pay below the minimum caps fit; v2.2: so does an experience gap;
-# v2.3: match_highlights.excluded flags excluded company/deal-breaker/experience-gap for suppression
+SCORING_VERSION = "v2.4"  # v2.1: pay below the minimum caps fit; v2.2: so does an experience gap;
+# v2.3: match_highlights.excluded flags excluded company/deal-breaker/experience-gap for suppression;
+# v2.4: a Staff/Principal/Director level implies years even when the posting states none
 
 DEFAULT_WEIGHTS = {
     "semantic": 0.30,
@@ -40,6 +41,12 @@ DEAL_BREAKER_CAP = 25.0
 # (a stretch application); beyond this it's out of reach and is treated
 # like a deal-breaker: capped, not AI-reviewed, kept out of Recommended.
 EXPERIENCE_STRETCH_YEARS = 1.0
+# Most postings at these levels never state years ("Staff Engineer, AI Product"
+# says nothing), so the stated-years check never fires -- yet nobody hires a
+# 2-year engineer as Staff. The level itself implies a floor. Senior is left
+# out on purpose: Senior postings span roughly 3-8 years, so it stays a
+# judgement call (add "senior": 5 to treat it the same way).
+IMPLIED_MIN_YEARS = {"staff": 8, "principal": 10, "director": 12}
 
 LABELS = {
     "semantic": "Overall fit (AI read of the full posting)",
@@ -291,17 +298,21 @@ def deal_breakers(job: dict, profile: dict) -> list[str]:
 
 
 def experience_gap(job: dict, profile: dict) -> dict:
-    """{"status", "need", "have"}; status is not_stated | unknown (posting
-    states years, profile doesn't) | meets | stretch | below."""
+    """{"status", "need", "have", "implied"}; status is not_stated | unknown
+    (years known, profile's isn't) | meets | stretch | below. `implied` means
+    the years come from the job's level, not from the posting's text."""
     need, have = job.get("experience_min_years"), profile.get("total_experience_years")
+    implied = need is None and job.get("seniority") in IMPLIED_MIN_YEARS
+    if implied:
+        need = IMPLIED_MIN_YEARS[job["seniority"]]
     if need is None:
-        return {"status": "not_stated", "need": None, "have": have}
+        return {"status": "not_stated", "need": None, "have": have, "implied": False}
     need = float(need)
     if have is None:
-        return {"status": "unknown", "need": need, "have": None}
+        return {"status": "unknown", "need": need, "have": None, "implied": implied}
     have = float(have)
     status = "meets" if have >= need else "stretch" if need - have <= EXPERIENCE_STRETCH_YEARS else "below"
-    return {"status": status, "need": need, "have": have}
+    return {"status": status, "need": need, "have": have, "implied": implied}
 
 
 def hard_exclude(job: dict, profile: dict) -> bool:
@@ -345,7 +356,8 @@ def assess(job: dict, profile: dict, resume_text: str, semantic: dict | None = N
     experience = experience_gap(job, profile)
     if experience["status"] == "below":
         components["seniority"].blocking = True  # reported once, as the blocker below
-        blockers.append(f"Experience gap: asks for {experience['need']:g}+ years, you have {experience['have']:g}")
+        asks = f"{job['seniority'].title()} roles typically need" if experience["implied"] else "asks for"
+        blockers.append(f"Experience gap: {asks} {experience['need']:g}+ years, you have {experience['have']:g}")
     if components["compensation"].blocking:
         blockers += components["compensation"].gaps
     if any(b.startswith("Excluded company") for b in blockers):

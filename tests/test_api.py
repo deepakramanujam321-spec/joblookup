@@ -347,3 +347,16 @@ def test_rerank_writes_every_job_in_one_round_trip(client, make_job, engine):
                               .where(jobs.c.id.in_(ids))).all()
     assert len(scores) == len(ids)
     assert all(s.priority_score is not None and s.priority_explanation for s in scores)
+
+
+def test_double_clicked_feedback_counts_as_one_signal(client, make_job):
+    """Two identical submissions of the same feedback on one job (a double
+    click on a slow server) once crossed the two-signal threshold by
+    themselves and made a Staff role a 'learned' favourite."""
+    staff, other = make_job(url="https://jobs.lever.co/dup/1", title="Staff Backend Engineer"), make_job(url="https://jobs.lever.co/dup/2")
+    for _ in range(2):
+        r = client.post(f"/api/v2/jobs/{staff}/feedback", json={"category": "excellent_match"})
+        assert r.status_code == 201
+    assert client.get("/api/v2/insights").json()["active"] == []
+    r = client.post(f"/api/v2/jobs/{other}/feedback", json={"category": "excellent_match"})
+    assert r.json()["newly_learned"], "a second *different* job is real evidence"

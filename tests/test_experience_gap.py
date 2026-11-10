@@ -39,3 +39,28 @@ def test_hard_exclude_covers_company_phrase_and_experience_but_never_salary():
     assert not matching.hard_exclude(below_floor_salary, PROFILE)
     assert not matching.hard_exclude(job(experience_min_years=3), TWO_YEARS)  # stretch, not excluded
     assert not matching.hard_exclude(job(), PROFILE)
+
+
+def test_staff_level_implies_years_even_when_the_posting_states_none():
+    """Constructor's and AlphaSense's Staff roles both stated no years, so the
+    stated-years check never fired and they ranked at the top for a 2-year
+    profile. The level itself must count."""
+    staff = job(seniority="staff", experience_min_years=None)
+    gap = matching.experience_gap(staff, TWO_YEARS)
+    assert gap == {"status": "below", "need": 8.0, "have": 2.0, "implied": True}
+    assert matching.hard_exclude(staff, TWO_YEARS)
+    result = matching.assess(staff, TWO_YEARS, "", STRONG)
+    assert result["overall_score"] == matching.DEAL_BREAKER_CAP
+    assert result["deal_breakers"] == ["Experience gap: Staff roles typically need 8+ years, you have 2"]
+    assert not assessment.should_run_semantic(staff, TWO_YEARS, result)  # no AI spend either
+
+
+def test_implied_years_never_override_stated_years_or_unknown_experience():
+    stated = job(seniority="staff", experience_min_years=2)  # the posting's own number wins
+    assert matching.experience_gap(stated, TWO_YEARS)["status"] == "meets"
+    assert not matching.experience_gap(stated, TWO_YEARS)["implied"]
+    assert matching.experience_gap(job(seniority="staff", experience_min_years=None), NOT_SET)["status"] == "unknown"
+    assert not matching.hard_exclude(job(seniority="staff", experience_min_years=None), NOT_SET)
+    assert not matching.hard_exclude(job(seniority="staff", experience_min_years=None), {**PROFILE, "total_experience_years": 9})
+    # Senior is a deliberate judgement call, not implied
+    assert matching.experience_gap(job(seniority="senior", experience_min_years=None), TWO_YEARS)["status"] == "not_stated"
