@@ -35,7 +35,7 @@ def categories(user: CurrentUser):
 def submit(job_id: int, body: FeedbackCreate, user: CurrentUser):
     with engine().begin() as conn:
         job = conn.execute(sa.select(jobs.c.id, jobs.c.fit_score, jobs.c.priority_score, jobs.c.scoring_version)
-                           .where(jobs.c.id == job_id)).first()
+                           .where(jobs.c.id == job_id, jobs.c.owner == user.account)).first()
         if job is None:
             raise HTTPException(404, "Job not found")
         record = profile_mod.get_or_seed(conn, user.account)

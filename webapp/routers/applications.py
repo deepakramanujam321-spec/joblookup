@@ -16,9 +16,10 @@ from schemas import ApplicationUpdate, TaskCreate, TaskUpdate
 router = APIRouter(prefix="/api/v2", tags=["applications"])
 
 
-def _job_or_404(conn, job_id: int):
+def _job_or_404(conn, job_id: int, account: str):
+    """The caller's own job, or 404 -- someone else's id is indistinguishable from a missing one."""
     job = conn.execute(sa.select(jobs.c.id, jobs.c.fit_score, jobs.c.priority_score, jobs.c.verification_status,
-                                 jobs.c.listing_quality).where(jobs.c.id == job_id)).first()
+                                 jobs.c.listing_quality).where(jobs.c.id == job_id, jobs.c.owner == account)).first()
     if job is None:
         raise HTTPException(404, "Job not found")
     return job
@@ -37,7 +38,7 @@ def update_application(job_id: int, body: ApplicationUpdate, user: CurrentUser):
     if not fields:
         raise HTTPException(400, "Nothing to update")
     with engine().begin() as conn:
-        job = _job_or_404(conn, job_id)
+        job = _job_or_404(conn, job_id, user.account)
         initial = _initial_status(conn, user.account, job)
         if fields.get("resume_id") is not None:
             owned = conn.execute(sa.select(resumes.c.id).where(
@@ -83,7 +84,7 @@ def _owned_application(conn, account: str, job_id: int):
 @router.post("/jobs/{job_id}/tasks", status_code=201)
 def create_task(job_id: int, body: TaskCreate, user: CurrentUser):
     with engine().begin() as conn:
-        job = _job_or_404(conn, job_id)
+        job = _job_or_404(conn, job_id, user.account)
         app = lifecycle.ensure(conn, user.account, job_id, _initial_status(conn, user.account, job))
         row = conn.execute(sa.insert(application_tasks).values(application_id=app.id, **body.model_dump())
                            .returning(application_tasks)).mappings().one()

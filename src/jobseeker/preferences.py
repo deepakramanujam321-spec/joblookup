@@ -91,7 +91,7 @@ def rerank(conn: Connection, owner: str, record: dict | None = None, resume: str
     # statement via a CASE per id.
     scored = [
         (job["id"], *assessment.compute_priority(dict(job), float(job["fit_score"]), record["data"], skills, learned, now))
-        for job in conn.execute(sa.select(jobs).where(jobs.c.fit_score.is_not(None))).mappings()
+        for job in conn.execute(sa.select(jobs).where(jobs.c.owner == owner, jobs.c.fit_score.is_not(None))).mappings()
     ]
     if scored:
         score_case = sa.case(*((jobs.c.id == jid, score) for jid, score, _ in scored))

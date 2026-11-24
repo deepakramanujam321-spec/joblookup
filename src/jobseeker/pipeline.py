@@ -62,7 +62,7 @@ def score_pending(engine: Engine, owner: str = profile_mod.DEFAULT_OWNER, llm_bu
         learned = assessment.load_learned(conn, owner)
         inputs = assessment.scoring_inputs(record["version"], resume)
         candidates = [dict(r) for r in conn.execute(
-            sa.select(jobs).where(_needs_scoring(inputs)).order_by(jobs.c.id).limit(limit)).mappings()]
+            sa.select(jobs).where(jobs.c.owner == owner, _needs_scoring(inputs)).order_by(jobs.c.id).limit(limit)).mappings()]
     profile = record["data"]
     evidence = profile_mod.evidence_text(profile, resume)
     model = llm.resolve_model() if llm.is_configured() else None
@@ -125,7 +125,8 @@ def rescore_all(conn, owner: str = profile_mod.DEFAULT_OWNER) -> int:
     learned = assessment.load_learned(conn, owner)
     evidence = profile_mod.evidence_text(record["data"], resume)
     count = 0
-    for job in conn.execute(sa.select(jobs).where(jobs.c.listing_quality == "ok", jobs.c.fit_score.is_not(None))).mappings().all():
+    for job in conn.execute(sa.select(jobs).where(
+            jobs.c.owner == owner, jobs.c.listing_quality == "ok", jobs.c.fit_score.is_not(None))).mappings().all():
         assessment.assess_job(conn, dict(job), owner, record, resume, evidence, None, False, learned)
         count += 1
     return count

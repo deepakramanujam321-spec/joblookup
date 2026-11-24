@@ -94,7 +94,7 @@ def _apply_filters(query, f: JobFilters, owner: str, review_threshold: float, st
         "dismissed": status_expr.in_(lifecycle.RULED_OUT),
         "closed": status_expr == "closed",
     }
-    query = query.where(views.get(f.view, sa.true()))
+    query = query.where(jobs.c.owner == owner, views.get(f.view, sa.true()))  # a person only ever sees their own jobs
     if f.q:
         terms = f.q.strip()[:200]
         like = f"%{terms.lower()}%"
@@ -159,9 +159,10 @@ def _count(conn, owner, f, review_threshold, stale_days, now) -> int:
     return conn.execute(query).scalar_one()
 
 
-def facets(conn: Connection) -> dict:
+def facets(conn: Connection, owner: str) -> dict:
     def distinct(col):
-        return [v for (v,) in conn.execute(sa.select(col).where(col.is_not(None)).distinct().order_by(col)) if v]
+        return [v for (v,) in conn.execute(
+            sa.select(col).where(jobs.c.owner == owner, col.is_not(None)).distinct().order_by(col)) if v]
     return {
         "sources": distinct(jobs.c.source), "seniority": distinct(jobs.c.seniority),
         "remote_type": distinct(jobs.c.remote_type), "employment_type": distinct(jobs.c.employment_type),
@@ -170,8 +171,8 @@ def facets(conn: Connection) -> dict:
 
 
 def job_detail(conn: Connection, owner: str, job_id: int, review_threshold: float) -> dict | None:
-    job = conn.execute(sa.select(jobs).where(jobs.c.id == job_id)).mappings().first()
-    if job is None:
+    job = conn.execute(sa.select(jobs).where(jobs.c.id == job_id, jobs.c.owner == owner)).mappings().first()
+    if job is None:  # also what someone else's job id looks like: not found, never "forbidden"
         return None
     job = {k: v for k, v in job.items() if k != "search_tsv"}
     app = conn.execute(sa.select(applications).where(applications.c.owner == owner, applications.c.job_id == job_id)).mappings().first()
@@ -225,7 +226,7 @@ def overview(conn: Connection, owner: str, review_threshold: float, high_thresho
     not_excluded = _not_excluded()
     live = sa.and_(jobs.c.verification_status != "closed", jobs.c.listing_quality == "ok", jobs.c.duplicate_of_id.is_(None), not_excluded)
     last_collect = conn.execute(
-        sa.select(runs).where(runs.c.run_type == "collect").order_by(runs.c.started_at.desc()).limit(1)
+        sa.select(runs).where(runs.c.run_type == "collect", runs.c.owner == owner).order_by(runs.c.started_at.desc()).limit(1)
     ).mappings().first()
     since = last_collect["started_at"] if last_collect else now - timedelta(days=7)
     has_feedback = sa.exists().where(job_feedback.c.job_id == jobs.c.id, job_feedback.c.owner == owner)
@@ -238,7 +239,7 @@ def overview(conn: Connection, owner: str, review_threshold: float, high_thresho
         sa.func.count().filter(applications.c.status.in_(tuple(lifecycle.ACTIVE_PIPELINE))).label("in_progress"),
         sa.func.count().filter(sa.and_(applications.c.status.in_(("dismissed", "rejected", "closed")), ~has_feedback)).label("awaiting_feedback"),
         sa.func.count().filter(applications.c.saved.is_(True)).label("saved"),
-    ).select_from(joined)).mappings().one()
+    ).select_from(joined).where(jobs.c.owner == owner)).mappings().one()
     interviews = conn.execute(
         sa.select(sa.func.count()).select_from(application_tasks.join(applications, applications.c.id == application_tasks.c.application_id))
         .where(applications.c.owner == owner, application_tasks.c.kind == "interview",

@@ -33,7 +33,7 @@ def _serialize(row) -> dict:
 @router.get("/jobs/{job_id}/drafts")
 def list_drafts(job_id: int, user: CurrentUser):
     with engine().begin() as conn:
-        _job_or_404(conn, job_id)
+        _job_or_404(conn, job_id, user.account)
         return {"items": [_serialize(r) for r in drafting.list_versions(conn, user.account, job_id)],
                 "llm_configured": llm.is_configured()}
 
@@ -51,7 +51,7 @@ def generate_draft(job_id: int, body: DraftGenerate, user: CurrentUser):
         raise HTTPException(503, "No LLM provider key is configured on the server (e.g. OPENAI_API_KEY).")
     limiter.check(user.account, "draft generation", 10)
     with engine().begin() as conn:
-        job = conn.execute(sa.select(jobs).where(jobs.c.id == job_id)).mappings().first()
+        job = conn.execute(sa.select(jobs).where(jobs.c.id == job_id, jobs.c.owner == user.account)).mappings().first()
         if job is None:
             raise HTTPException(404, "Job not found")
         record = profile_mod.get_or_seed(conn, user.account)
@@ -72,7 +72,7 @@ def generate_draft(job_id: int, body: DraftGenerate, user: CurrentUser):
     with engine().begin() as conn:
         row = drafting.save_version(conn, user.account, job_id, "generated", package, resume_id=resume_id,
                                     profile_version=record["version"], model=model)
-        job_row = _job_or_404(conn, job_id)
+        job_row = _job_or_404(conn, job_id, user.account)
         app = lifecycle.ensure(conn, user.account, job_id, _initial_status(conn, user.account, job_row))
         if app.status in lifecycle.DRAFT_ADVANCES_FROM:
             lifecycle.transition(conn, user.account, job_id, "draft_ready", app.status, "Draft generated")
@@ -82,7 +82,7 @@ def generate_draft(job_id: int, body: DraftGenerate, user: CurrentUser):
 @router.post("/jobs/{job_id}/drafts", status_code=201)
 def save_edit(job_id: int, body: DraftEdit, user: CurrentUser):
     with engine().begin() as conn:
-        _job_or_404(conn, job_id)
+        _job_or_404(conn, job_id, user.account)
         parent = None
         if body.parent_id is not None:
             parent = conn.execute(sa.select(application_drafts).where(

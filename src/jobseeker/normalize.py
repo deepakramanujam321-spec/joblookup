@@ -225,6 +225,12 @@ SKILL_VOCAB: dict[str, tuple[str, ...]] = {
     "MLOps": (), "Agents": ("ai agents", "agentic"), "Fine-tuning": ("fine tuning", "finetuning"),
     "RBAC": ("access control",), "OAuth": ("oauth2", "openid connect", "oidc"), "Casbin": (),
     "Security": ("appsec",), "Payments": (), "Multi-tenancy": ("multi-tenant", "multitenant"),
+    # games / real-time graphics
+    "Unity": ("unity3d", "unity 3d"), "Unreal Engine": ("unreal", "ue4", "ue5"),
+    "HLSL": (), "GLSL": (), "OpenGL": (), "Vulkan": (), "DirectX": ("directx 12", "d3d12"),
+    "Shaders": ("shader programming", "shader"), "Gameplay programming": ("gameplay systems", "gameplay programmer"),
+    "AR/VR": ("ar foundation", "arcore", "arkit", "augmented reality", "virtual reality", "openxr"),
+    "Multiplayer": ("netcode", "multiplayer networking"),
 }
 
 _GENERIC_SKILLS = {"SQL", "Linux", "REST APIs", "Security"}  # too common to count as a "gap"
@@ -277,12 +283,13 @@ def detect_seniority(title: str | None) -> str | None:
 
 JOB_CATEGORIES = (
     "backend", "platform", "ai_ml", "fullstack", "frontend", "data", "devops_sre", "mobile",
-    "security", "solutions", "support", "management", "other",
+    "security", "solutions", "support", "management", "game_dev", "other",
 )
 _CATEGORY_RULES = [
     ("management", r"\b(engineering manager|director|head of|vp\b)"),
     ("support", r"\b(support|helpdesk|customer success|technical account)\b"),
     ("solutions", r"\b(solutions? (architect|engineer)|sales engineer|pre-?sales|forward deployed)\b"),
+    ("game_dev", r"\b(gameplay|game (programmer|developer|engineer|designer)|unity|unreal|graphics programmer|engine programmer|technical artist)\b"),
     ("ai_ml", r"\b(ai|ml|machine learning|llm|genai|applied scientist|nlp)\b"),
     ("platform", r"\b(platform|infrastructure|infra)\b"),
     ("devops_sre", r"\b(devops|sre|site reliability|cloud engineer)\b"),

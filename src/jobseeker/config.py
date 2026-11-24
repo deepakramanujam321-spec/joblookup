@@ -34,6 +34,7 @@ ENV_VARS: dict[str, str] = {
     "DASHBOARD_URL": "Public URL of the dashboard (digest links, OAuth redirect off Render).",
     "RENDER_EXTERNAL_URL": "Set by Render automatically; fallback for DASHBOARD_URL.",
     "DASHBOARD_ACCOUNT_ID": "Optional: account id owning user data (default 'default').",
+    "DASHBOARD_EXTRA_USERS": "Optional: more dashboard logins as JSON, [{\"username\":..,\"password\":..,\"account\":..}]; each account has its own jobs, profile and resumes.",
     "DB_POOL_SIZE": "Optional: connection pool size (default 3).",
     # collection + LLM (LiteLLM: one provider key is enough)
     "BRAVE_API_KEY": "Brave Search API key for discovery.",

@@ -21,17 +21,20 @@ from jobseeker.database import get_engine  # noqa: E402
 def main() -> int:
     engine = get_engine()
     with engine.begin() as conn:
-        record = profile.get_or_seed(conn, profile.DEFAULT_OWNER)
-        url = record["data"].get("resume_folder_url")
-        if not url:
-            print("[sync_resumes] no resume folder set on the profile; skipping", file=sys.stderr)
-            return 0
-        try:
-            result = resume_hub.sync(conn, profile.DEFAULT_OWNER, url)
-        except Exception as e:
-            print(f"[sync_resumes] sync failed, keeping existing resumes: {type(e).__name__}: {e}", file=sys.stderr)
-            return 0
-    print(f"[sync_resumes] {result.as_dict()}", file=sys.stderr)
+        owners = profile.list_owners(conn)
+    for owner in owners:
+        with engine.begin() as conn:
+            record = profile.get_or_seed(conn, owner)
+            url = record["data"].get("resume_folder_url")
+            if not url:
+                print(f"[sync_resumes] {owner}: no resume folder set on the profile; skipping", file=sys.stderr)
+                continue
+            try:
+                result = resume_hub.sync(conn, owner, url)
+            except Exception as e:
+                print(f"[sync_resumes] {owner}: sync failed, keeping existing resumes: {type(e).__name__}: {e}", file=sys.stderr)
+                continue
+        print(f"[sync_resumes] {owner}: {result.as_dict()}", file=sys.stderr)
     return 0
 
 

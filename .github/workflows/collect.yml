@@ -31,8 +31,8 @@ jobs:
 
       - run: scrapling install --force
 
-      - name: Fetch candidate postings
-        run: python scripts/run_collect.py --output jobs.json
+      - name: Fetch candidate postings (each person is searched from their own profile)
+        run: python scripts/run_collect.py --output-dir collected
         env:
           BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
 
@@ -40,10 +40,10 @@ jobs:
         run: python scripts/sync_resumes.py
 
       - name: Store, enrich and score
-        run: python scripts/score_and_draft.py --jobs-file jobs.json
+        run: python scripts/score_and_draft.py --jobs-dir collected
         env:
-          # Provider-agnostic via LiteLLM: set ONE provider key; LLM_MODEL is
-          # optional (auto-detected from whichever key is set).
+          # Provider-agnostic via LiteLLM: set one or more provider keys (extra
+          # providers are automatic fallbacks); LLM_MODEL is optional.
           LLM_MODEL: ${{ secrets.LLM_MODEL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

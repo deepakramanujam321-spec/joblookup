@@ -25,7 +25,7 @@ V1_COLUMNS = [jobs.c[name] for name in (
 @router.get("/jobs")
 def list_jobs(user: CurrentUser, status: str | None = None, source: str | None = None, min_score: float | None = None,
               q: str | None = None, limit: int = Query(default=50, le=200), offset: int = 0):
-    query = sa.select(*V1_COLUMNS)
+    query = sa.select(*V1_COLUMNS).where(jobs.c.owner == user.account)
     if status:
         query = query.where(jobs.c.status == status)
     if source:
@@ -44,7 +44,7 @@ def list_jobs(user: CurrentUser, status: str | None = None, source: str | None =
 @router.get("/jobs/{job_id}")
 def get_job(job_id: int, user: CurrentUser):
     with engine().begin() as conn:
-        row = conn.execute(sa.select(*V1_COLUMNS).where(jobs.c.id == job_id)).mappings().first()
+        row = conn.execute(sa.select(*V1_COLUMNS).where(jobs.c.id == job_id, jobs.c.owner == user.account)).mappings().first()
     if row is None:
         raise HTTPException(404, "Job not found")
     return dict(row)
@@ -58,7 +58,7 @@ def update_job(job_id: int, update: JobUpdate, user: CurrentUser):
     if "status" in fields and fields["status"] not in VALID_STATUSES:
         raise HTTPException(400, f"Invalid status. Must be one of {sorted(VALID_STATUSES)}")
     with engine().begin() as conn:
-        job = conn.execute(sa.select(jobs).where(jobs.c.id == job_id)).first()
+        job = conn.execute(sa.select(jobs).where(jobs.c.id == job_id, jobs.c.owner == user.account)).first()
         if job is None:
             raise HTTPException(404, "Job not found")
         conn.execute(sa.update(jobs).where(jobs.c.id == job_id).values(**fields, updated_at=datetime.now(timezone.utc)))
@@ -77,10 +77,11 @@ def update_job(job_id: int, update: JobUpdate, user: CurrentUser):
 @router.get("/stats")
 def stats(user: CurrentUser):
     with engine().begin() as conn:
-        return dict(conn.execute(sa.select(jobs.c.status, sa.func.count()).group_by(jobs.c.status)).all())
+        return dict(conn.execute(sa.select(jobs.c.status, sa.func.count()).where(jobs.c.owner == user.account)
+                                 .group_by(jobs.c.status)).all())
 
 
 @router.get("/runs")
 def list_runs(user: CurrentUser, limit: int = Query(default=20, le=100)):
     with engine().begin() as conn:
-        return runs.list_runs(conn, limit)
+        return runs.list_runs(conn, limit, user.account)

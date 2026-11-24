@@ -26,6 +26,8 @@ from . import normalize
 from .database import job_sources, jobs
 from .models import JobListing
 
+DEFAULT_OWNER = "default"  # same value as profile.DEFAULT_OWNER (kept here to avoid an import cycle)
+
 ENRICHMENT_VERSION = 2  # bump when normalization logic changes; run_enrich.py re-processes older rows
 MAX_DESCRIPTION_CHARS = 50_000
 API_SOURCES = {"greenhouse_api", "lever_api", "ashby_api"}
@@ -110,19 +112,23 @@ def normalized_fields(listing: JobListing) -> dict:
     return fields
 
 
-def _find_existing(conn: Connection, listing: JobListing, fields: dict):
+def _find_existing(conn: Connection, listing: JobListing, fields: dict, owner: str):
+    """Identity is per owner: the same posting found for two people is two
+    jobs, each with its own scores, status and digest state."""
     row = conn.execute(
         sa.select(jobs.c.id, jobs.c.source).join(job_sources, job_sources.c.job_id == jobs.c.id)
-        .where(job_sources.c.url.in_({listing.url, fields["canonical_url"]}))
+        .where(jobs.c.owner == owner, job_sources.c.url.in_({listing.url, fields["canonical_url"]}))
     ).first()
     if row:
         return row, "seen"
-    row = conn.execute(sa.select(jobs.c.id, jobs.c.source).where(jobs.c.canonical_url == fields["canonical_url"])).first()
+    row = conn.execute(sa.select(jobs.c.id, jobs.c.source).where(
+        jobs.c.owner == owner, jobs.c.canonical_url == fields["canonical_url"])).first()
     if row:
         return row, "seen"
     if listing.external_id:
         row = conn.execute(
-            sa.select(jobs.c.id, jobs.c.source).where(jobs.c.source == listing.source, jobs.c.external_id == listing.external_id)
+            sa.select(jobs.c.id, jobs.c.source).where(
+                jobs.c.owner == owner, jobs.c.source == listing.source, jobs.c.external_id == listing.external_id)
         ).first()
         if row:
             return row, "seen"
@@ -130,7 +136,7 @@ def _find_existing(conn: Connection, listing: JobListing, fields: dict):
     if company_part and title_part:
         row = conn.execute(
             sa.select(jobs.c.id, jobs.c.source).where(
-                jobs.c.dedupe_key == fields["dedupe_key"], jobs.c.source != listing.source,
+                jobs.c.owner == owner, jobs.c.dedupe_key == fields["dedupe_key"], jobs.c.source != listing.source,
                 jobs.c.verification_status != "closed", jobs.c.duplicate_of_id.is_(None),
             ).order_by(jobs.c.id).limit(1)
         ).first()
@@ -157,7 +163,8 @@ def _fill_missing(conn: Connection, job_id: int, fields: dict, now: datetime) ->
     conn.execute(sa.update(jobs).where(jobs.c.id == job_id).values(**updates))
 
 
-def upsert_listings(conn: Connection, listings: list[JobListing], now: datetime | None = None) -> IngestStats:
+def upsert_listings(conn: Connection, listings: list[JobListing], now: datetime | None = None,
+                    owner: str = DEFAULT_OWNER) -> IngestStats:
     now = now or datetime.now(timezone.utc)
     stats = IngestStats(found=len(listings))
     for listing in listings:
@@ -171,7 +178,7 @@ def upsert_listings(conn: Connection, listings: list[JobListing], now: datetime 
             stats.reject("search/category page, not a single posting")
             continue
         fields = normalized_fields(listing)
-        existing, kind = _find_existing(conn, listing, fields)
+        existing, kind = _find_existing(conn, listing, fields, owner)
         if existing is not None:
             if kind == "merged":
                 stats.merged_duplicates += 1
@@ -184,7 +191,7 @@ def upsert_listings(conn: Connection, listings: list[JobListing], now: datetime 
         enriched = fields["description_source"] in API_SOURCES or fields["description_source"] == "jsonld"
         job_id = conn.execute(
             sa.insert(jobs).values(
-                source=listing.source, url=listing.url, status="new", discovered_at=now, last_seen_at=now,
+                owner=owner, source=listing.source, url=listing.url, status="new", discovered_at=now, last_seen_at=now,
                 enrichment_version=ENRICHMENT_VERSION if enriched else 0,
                 enriched_at=now if enriched else None,
                 **{k: v for k, v in fields.items() if k not in ("company",)},
@@ -204,4 +211,4 @@ def _record_source(conn: Connection, job_id: int, listing: JobListing, now: date
         job_id=job_id, source=listing.source, url=normalize.canonical_url(listing.url) or listing.url, external_id=listing.external_id or None,
         first_seen_at=now, last_seen_at=now,
     )
-    conn.execute(stmt.on_conflict_do_update(index_elements=["url"], set_={"last_seen_at": now}))
+    conn.execute(stmt.on_conflict_do_update(index_elements=["job_id", "url"], set_={"last_seen_at": now}))

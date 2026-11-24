@@ -14,4 +14,4 @@ router = APIRouter(prefix="/api/v2", tags=["pipeline"])
 @router.get("/pipeline")
 def pipeline_health(user: CurrentUser, limit: int = Query(default=30, le=100)):
     with engine().begin() as conn:
-        return {**runs.health(conn), "recent_runs": runs.list_runs(conn, limit)}
+        return {**runs.health(conn, owner=user.account), "recent_runs": runs.list_runs(conn, limit, user.account)}

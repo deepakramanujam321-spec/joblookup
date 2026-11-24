@@ -28,7 +28,7 @@ def main() -> int:
     with runs.recorded(engine, "verify") as rec:
         stats = verification.verify_due(engine, limit=args.limit)
         with engine.begin() as conn:
-            reranked = preferences.rerank(conn, profile.DEFAULT_OWNER)
+            reranked = sum(preferences.rerank(conn, owner) for owner in profile.list_owners(conn))
         rec.values.update(jobs_found=stats["checked"], jobs_updated=reranked)
         rec.details = stats
         print(f"[run_verify] {stats}, re-ranked {reranked}", file=sys.stderr)

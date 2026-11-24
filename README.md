@@ -118,6 +118,30 @@ request after that takes ~30s.
    the official APIs (full descriptions, real dates), flags non-postings, and
    re-scores everything with the new breakdown (~$0.10 on gpt-4o-mini).
 
+### 6. More than one person (same database, same Render service)
+
+Everyone has their own jobs, profile, resumes, scores, drafts and digest;
+they share only the infrastructure and API keys. Each person is searched
+from **their own profile** (preferred titles, keywords, locations, excluded
+companies, salary floor), scored against their own resume, and emailed their
+own Saturday digest. A job found for one person reaches another only if it's
+a strong match for them (`src/jobseeker/sharing.py`: a targeted title and a
+deterministic fit of 80+, nothing ruling it out).
+
+To add someone:
+
+1. Render → Environment → `DASHBOARD_EXTRA_USERS` (JSON, one entry per person):
+   `[{"username":"priya","password":"<long random>","account":"priya"}]`.
+   `account` is a lowercase id (`a-z 0-9 _ -`); the original login keeps using
+   `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD`.
+2. They sign in and fill **Profile** (at least *Preferred titles* — without them
+   there is nothing to search for) and upload a resume. A new account always
+   starts blank; it never inherits anyone else's profile.
+3. Their email in the profile is where their digest goes. No email, no digest.
+
+Costs are shared: each person gets their own AI budget per run
+(`MAX_LLM_CALLS_PER_RUN`) on the same keys, and their own Brave Search queries.
+
 ## Local development
 
 ```bash
@@ -135,13 +159,15 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres@localhost:5432/postgres pytest
 (cd webapp/frontend && npm test)
 ```
 
-Collection only (no DB writes): `BRAVE_API_KEY=... python scripts/run_collect.py --pretty`.
+Collection only (no DB writes): `BRAVE_API_KEY=... python scripts/run_collect.py --pretty`
+(without `DATABASE_URL` it searches for the single person in `config/profile.yaml`).
 
 ## Reusing this for someone else
 
 Nothing in `src/`, `scripts/` or `webapp/` references a specific person. Fork,
-replace `config/profile.yaml` + `config/resume.txt` (they seed the profile on
-first run, after which the in-app Profile page is the source of truth), create
+replace `config/profile.yaml` + `config/resume.txt` (they seed the *original*
+account's profile on first run, after which the in-app Profile page is the
+source of truth; every other account starts blank), create
 your own Supabase project, run `alembic upgrade head` from `db/`, set the
 secrets above. If reusing it requires editing Python, that's a bug.
 

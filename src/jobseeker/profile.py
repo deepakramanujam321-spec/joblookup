@@ -14,6 +14,7 @@ copy is authoritative and the YAML only drives search discovery defaults.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import re
 from datetime import datetime, timezone
@@ -173,6 +174,16 @@ def get_or_seed(conn: Connection, owner: str = DEFAULT_OWNER) -> dict:
     row = conn.execute(sa.select(candidate_profiles).where(candidate_profiles.c.owner == owner)).first()
     if row is not None:
         return _row_to_dict(row)
+    if owner != DEFAULT_OWNER:
+        # Every other person starts blank. Only the original deployment's
+        # account is seeded from config/ -- someone else must never inherit
+        # that person's profile, resume or excluded companies.
+        conn.execute(
+            pg_insert(candidate_profiles)
+            .values(owner=owner, data=CandidateProfile().model_dump(), version=1)
+            .on_conflict_do_nothing(index_elements=["owner"])
+        )
+        return _row_to_dict(conn.execute(sa.select(candidate_profiles).where(candidate_profiles.c.owner == owner)).one())
     yaml_profile = config.load_profile()
     try:
         resume_text = config.load_resume_text(yaml_profile)
@@ -212,6 +223,36 @@ def _seed_resume(conn: Connection, owner: str, text: str) -> None:
             extracted_text=text,
         )
     )
+
+
+def list_owners(conn: Connection) -> list[str]:
+    """Everyone the pipeline runs for: each account with a profile, and the
+    original account even before its profile has been seeded."""
+    owners = set(conn.execute(sa.select(candidate_profiles.c.owner)).scalars())
+    return sorted(owners | {DEFAULT_OWNER}, key=lambda o: (o != DEFAULT_OWNER, o))  # original account first
+
+
+def discovery_profile(candidate: dict, base: dict, owner: str = DEFAULT_OWNER) -> dict | None:
+    """The yaml-shaped dict that sources/filters search with, built from this
+    person's own profile (`base` supplies only the global settings: which
+    sources are on, staffing-agency markers). None = nothing to search for yet.
+    The original account still falls back to config/profile.yaml if its
+    profile has no titles."""
+    titles = list(candidate.get("preferred_titles") or [])
+    if not titles:
+        return copy.deepcopy(base) if owner == DEFAULT_OWNER else None
+    keywords = list(candidate.get("search_keywords") or []) or [s["name"] for s in candidate.get("skills") or []][:12]
+    comp = candidate.get("compensation") or {}
+    floor = comp.get("min_annual")
+    out = copy.deepcopy(base)
+    out["candidate"] = {"name": candidate.get("name") or "", "digest_email": candidate.get("email") or ""}
+    out["role_focus"] = {"titles": titles, "keywords_any": keywords}
+    out["location_preference"] = [loc["label"] for loc in candidate.get("locations") or []]
+    out["salary_floor_lpa"] = floor / 100_000 if floor and comp.get("currency", "INR") == "INR" else 0
+    # companies come only from this person's profile -- never base's list (the original user's employer)
+    out["exclusions"] = {**{k: v for k, v in (base.get("exclusions") or {}).items() if k != "companies"},
+                         "companies": list(candidate.get("excluded_companies") or [])}
+    return out
 
 
 def save(conn: Connection, owner: str, data: CandidateProfile, additional_info: str | None, expected_version: int | None) -> dict:

@@ -11,6 +11,8 @@ fails if `src/jobseeker/database.py` drifts from the migrated schema).
 | `0002_grant_jobseeker_privileges` | grants a non-`public` schema doesn't inherit |
 | `0003_posted_at_to_text` | heterogeneous source date formats stored raw |
 | `0004_joblookup_v2` | job intelligence + provenance/verification, profiles, resumes, applications (+events/tasks), versioned drafts, feedback, learned preferences, Google integrations, audit log; legacy data carried forward. Purely additive. |
+| `0005_document_blobs` | resume file bytes stored in Postgres (no separate storage credentials) |
+| `0006_multi_owner_jobs` | `jobs.owner` (+ `runs.owner`): each person's job list is their own. Uniqueness becomes `(owner, url)` / `(job_id, url)`. Additive; downgrade refuses while another owner has jobs. |
 
 History note: 0001–0003 were first applied by hand while the database was
 stamped `0001`. 0002 and 0003 are idempotent, so the stamp was brought back
@@ -57,7 +59,7 @@ Rules of thumb:
 
 ## Schema reference
 
-* `jobs` — one row per vacancy. `status` is the pipeline/digest state
+* `jobs` — one row per vacancy *per owner* (the same posting found for two people is two rows, so scores and statuses never mix). `status` is the pipeline/digest state
   (`new → scored → queued_for_digest → sent_in_digest`); the user's own
   workflow lives in `applications`. Posting dates: `posted_at` raw source
   value, `posted_at_ts` parsed **only with** `posted_at_evidence`.

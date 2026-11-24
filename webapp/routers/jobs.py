@@ -51,7 +51,7 @@ def list_jobs(
 @router.get("/jobs/facets")
 def facets(user: CurrentUser):
     with engine().begin() as conn:
-        return queries.facets(conn)
+        return queries.facets(conn, user.account)
 
 
 @router.get("/jobs/{job_id}")

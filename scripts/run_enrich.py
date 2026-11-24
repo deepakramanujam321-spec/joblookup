@@ -17,32 +17,38 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from jobseeker import pipeline, runs, verification  # noqa: E402
+from jobseeker import pipeline, profile, runs, verification  # noqa: E402
 from jobseeker.database import get_engine  # noqa: E402
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=500)
-    parser.add_argument("--llm-budget", type=int, default=pipeline.DEFAULT_LLM_BUDGET)
+    parser.add_argument("--llm-budget", type=int, default=pipeline.DEFAULT_LLM_BUDGET, help="AI reads per person")
     parser.add_argument("--review-all", action="store_true",
                         help="AI-review open jobs the cost gate would skip (location/role mismatch)")
+    parser.add_argument("--owner", action="append", help="only this person (repeatable); default: everyone")
     args = parser.parse_args()
     engine = get_engine()
-    with runs.recorded(engine, "enrich") as rec:
-        enrich_stats = verification.enrich_pending(engine, limit=args.limit)
-        score_stats = pipeline.score_pending(engine, llm_budget=args.llm_budget, limit=args.limit,
-                                             review_all=args.review_all)
-        llm_error, llm_failed = pipeline.llm_health(score_stats)
-        if llm_error:
-            rec.errors.append(llm_error)
-        rec.values.update(jobs_found=enrich_stats["processed"], jobs_updated=score_stats["candidates"])
-        rec.details = {"enrich": enrich_stats, "score": score_stats}
-        print(f"[run_enrich] enrich={enrich_stats} score={score_stats}", file=sys.stderr)
-    if llm_failed:
-        print(f"::error::{llm_error}", file=sys.stderr)
-        return 1
-    return 0
+    with engine.begin() as conn:
+        owners = args.owner or profile.list_owners(conn)
+    enrich_stats = verification.enrich_pending(engine, limit=args.limit)  # not per person
+    exit_code = 0
+    for owner in owners:
+        llm_failed = False
+        with runs.recorded(engine, "enrich", owner) as rec:
+            score_stats = pipeline.score_pending(engine, owner, llm_budget=args.llm_budget, limit=args.limit,
+                                                 review_all=args.review_all)
+            llm_error, llm_failed = pipeline.llm_health(score_stats)
+            if llm_error:
+                rec.errors.append(llm_error)
+            rec.values.update(jobs_found=enrich_stats["processed"], jobs_updated=score_stats["candidates"])
+            rec.details = {"enrich": enrich_stats, "score": score_stats}
+            print(f"[run_enrich] {owner}: enrich={enrich_stats} score={score_stats}", file=sys.stderr)
+        if llm_failed:
+            print(f"::error::{owner}: {llm_error}", file=sys.stderr)
+            exit_code = 1
+    return exit_code
 
 
 if __name__ == "__main__":

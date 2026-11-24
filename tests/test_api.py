@@ -216,9 +216,10 @@ def test_account_scoping(client, make_job, monkeypatch, engine):
     draft = client.post(f"/api/v2/jobs/{job_id}/drafts", json={"body": "mine"}).json()
     client.put(f"/api/v2/jobs/{job_id}/application", json={"saved": True})
     monkeypatch.setenv("DASHBOARD_ACCOUNT_ID", "someone-else")
-    assert client.get(f"/api/v2/jobs/{job_id}/drafts").json()["items"] == []
+    # jobs are per account: someone else's id is simply not found, in every direction
+    assert client.get(f"/api/v2/jobs/{job_id}/drafts").status_code == 404
     assert client.post(f"/api/v2/drafts/{draft['id']}/gmail", json={}).status_code == 404
-    assert client.get(f"/api/v2/jobs/{job_id}").json()["application"] is None
+    assert client.get(f"/api/v2/jobs/{job_id}").status_code == 404
     with engine.connect() as conn:
         assert conn.execute(sa.select(applications.c.owner)).scalar() == "default"
 

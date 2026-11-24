@@ -31,6 +31,7 @@ def _id() -> sa.Column:
 jobs = sa.Table(
     "jobs", metadata,
     _id(),
+    sa.Column("owner", sa.Text, nullable=False),  # each person's job list is their own
     sa.Column("source", sa.Text, nullable=False),
     sa.Column("external_id", sa.Text),
     sa.Column("url", sa.Text, nullable=False),
@@ -113,6 +114,7 @@ runs = sa.Table(
     "runs", metadata,
     _id(),
     sa.Column("run_type", sa.Text, nullable=False),
+    sa.Column("owner", sa.Text),  # who a collect/enrich/digest run was for; NULL = covers everyone
     sa.Column("started_at", TS, nullable=False),
     sa.Column("finished_at", TS),
     sa.Column("status", sa.Text),

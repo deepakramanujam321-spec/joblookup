@@ -55,7 +55,8 @@ def apply_filters(listings: list[JobListing], profile: dict) -> list[JobListing]
             listing.company, exclusions.get("staffing_agency_markers", [])
         ):
             continue
-        if not matches_keywords(listing, role_focus.get("keywords_any", [])):
+        keywords = role_focus.get("keywords_any", [])
+        if keywords and not matches_keywords(listing, keywords):
             continue
         if not meets_salary_floor(listing.salary_text, salary_floor):
             continue

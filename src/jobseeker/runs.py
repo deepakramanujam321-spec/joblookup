@@ -21,8 +21,9 @@ COLLECT_STALE_AFTER = timedelta(days=4)  # weekday schedule: Fri -> Mon is 3 day
 
 
 class RunRecorder:
-    def __init__(self, run_type: str):
+    def __init__(self, run_type: str, owner: str | None = None):
         self.run_type = run_type
+        self.owner = owner
         self.started = datetime.now(timezone.utc)
         self._t0 = time.monotonic()
         self.values: dict = {"jobs_found": 0, "jobs_new": 0, "jobs_duplicate": 0, "jobs_rejected": 0, "jobs_updated": 0}
@@ -44,10 +45,11 @@ class RunRecorder:
 
 
 @contextmanager
-def recorded(engine: Engine, run_type: str):
+def recorded(engine: Engine, run_type: str, owner: str | None = None):
     """Always writes a run row -- including when the body raises, which is
-    exactly when the dashboard most needs to show it."""
-    rec = RunRecorder(run_type)
+    exactly when the dashboard most needs to show it. `owner` is who the run
+    was for (None = covers everyone, e.g. verification)."""
+    rec = RunRecorder(run_type, owner)
     failed = None
     try:
         yield rec
@@ -58,15 +60,20 @@ def recorded(engine: Engine, run_type: str):
     finally:
         with engine.begin() as conn:
             conn.execute(sa.insert(runs).values(
-                run_type=run_type, started_at=rec.started, finished_at=datetime.now(timezone.utc),
+                run_type=run_type, owner=owner, started_at=rec.started, finished_at=datetime.now(timezone.utc),
                 status=rec.status(failed is not None), duration_ms=int((time.monotonic() - rec._t0) * 1000),
                 source_stats=rec.source_stats or None, details=rec.details or None,
                 error="; ".join(rec.errors)[:4000] or None, **rec.values,
             ))
 
 
-def list_runs(conn, limit: int = 30) -> list[dict]:
-    rows = conn.execute(sa.select(runs).order_by(runs.c.started_at.desc()).limit(limit)).mappings().all()
+def _runs_for(owner: str | None):
+    """Runs shown to a person: their own plus those that cover everyone."""
+    return sa.true() if owner is None else sa.or_(runs.c.owner == owner, runs.c.owner.is_(None))
+
+
+def list_runs(conn, limit: int = 30, owner: str | None = None) -> list[dict]:
+    rows = conn.execute(sa.select(runs).where(_runs_for(owner)).order_by(runs.c.started_at.desc()).limit(limit)).mappings().all()
     out = []
     for r in rows:
         r = dict(r)
@@ -76,9 +83,9 @@ def list_runs(conn, limit: int = 30) -> list[dict]:
     return out
 
 
-def health(conn, now: datetime | None = None) -> dict:
+def health(conn, now: datetime | None = None, owner: str | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
-    recent = list_runs(conn, 50)
+    recent = list_runs(conn, 50, owner)
     by_type: dict[str, dict] = {}
     for run_type in ("collect", "verify", "digest", "enrich"):
         of_type = [r for r in recent if r["run_type"] == run_type]
@@ -108,5 +115,5 @@ def health(conn, now: datetime | None = None) -> dict:
         )).label("stale"),
         sa.func.count().filter(jobs.c.verification_status == "unchecked").label("unchecked"),
         sa.func.count().filter(jobs.c.listing_quality == "not_a_listing").label("not_a_listing"),
-    )).mappings().one()
+    ).where(sa.true() if owner is None else jobs.c.owner == owner)).mappings().one()
     return {"state": state, "message": message, "runs": by_type, "listings": dict(counts)}

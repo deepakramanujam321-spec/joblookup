@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Weekend digest: everything queued since the last digest, ranked by
-priority (fit + freshness + recency + learned preferences), rendered as one
-HTML email and sent; those rows are then marked sent. Closed listings and
+"""Weekend digest: for each person, everything queued since their last digest,
+ranked by priority (fit + freshness + recency + learned preferences), rendered
+as one HTML email to the address in their profile and sent; those rows are then
+marked sent. Closed listings and
 non-listings are skipped. No LLM call here -- scoring and drafting already
 happened in score_and_draft.py; this is pure templating.
 
@@ -27,6 +28,7 @@ import sqlalchemy as sa  # noqa: E402
 from send_digest import send as send_email  # noqa: E402
 
 from jobseeker import config, drafting, runs  # noqa: E402
+from jobseeker import profile as profile_mod  # noqa: E402
 from jobseeker.database import get_engine, jobs  # noqa: E402
 from jobseeker.profile import DEFAULT_OWNER  # noqa: E402
 
@@ -97,38 +99,59 @@ review and send yourself &mdash; nothing has been sent on your behalf.</p>
 </body></html>"""
 
 
-def main() -> int:
-    profile = config.load_profile()
-    engine = get_engine()
-    dashboard_url = os.environ.get("DASHBOARD_URL")
-    with runs.recorded(engine, "digest") as rec:
+def digest_for(engine, owner: str, base_profile: dict, dashboard_url: str | None) -> int:
+    """Sends one person's digest; returns how many jobs were in it."""
+    with engine.begin() as conn:
+        record = profile_mod.get_or_seed(conn, owner)
+    to_addr = record["data"].get("email") or (
+        base_profile["candidate"].get("digest_email") if owner == DEFAULT_OWNER else None)
+    with runs.recorded(engine, "digest", owner) as rec:
         with engine.connect() as conn:
             rows = [dict(r) for r in conn.execute(
                 sa.select(jobs).where(
-                    jobs.c.status == "queued_for_digest", jobs.c.verification_status != "closed",
+                    jobs.c.owner == owner, jobs.c.status == "queued_for_digest", jobs.c.verification_status != "closed",
                     jobs.c.listing_quality == "ok",
                 ).order_by(jobs.c.priority_score.desc().nullslast(), jobs.c.fit_score.desc().nullslast())
             ).mappings()]
             for row in rows:
-                latest = drafting.latest_version(conn, DEFAULT_OWNER, row["id"])
+                latest = drafting.latest_version(conn, owner, row["id"])
                 row["draft_body"] = latest.body if latest else row.get("outreach_draft")
         rec.values["jobs_found"] = len(rows)
         if not rows:
-            print("[run_digest] nothing queued, skipping send", file=sys.stderr)
+            print(f"[run_digest] {owner}: nothing queued, skipping send", file=sys.stderr)
+            return 0
+        if not to_addr:
+            print(f"[run_digest] {owner}: {len(rows)} job(s) queued but no email in the profile; not sending", file=sys.stderr)
+            rec.errors.append("no email address in the profile")
             return 0
 
         today = date.today().isoformat()
         from_addr = config.require_env_any(["SMTP_USERNAME", "GMAIL_ADDRESS"])
         app_password = config.require_env_any(["SMTP_PASSWORD", "GMAIL_APP_PASSWORD"])
-        to_addr = profile["candidate"]["digest_email"]
         subject = f"Job digest — {len(rows)} new match{'es' if len(rows) != 1 else ''} — {today}"
         send_email(render_digest(rows, dashboard_url), subject, to_addr, from_addr, app_password)
         with engine.begin() as conn:
             conn.execute(sa.update(jobs).where(jobs.c.id.in_([r["id"] for r in rows])).values(
                 status="sent_in_digest", digest_batch_date=today))
         rec.values["jobs_new"] = len(rows)
-        print(f"[run_digest] sent: {len(rows)} job(s) to {to_addr}", file=sys.stderr)
-    return 0
+        print(f"[run_digest] {owner}: sent {len(rows)} job(s) to {to_addr}", file=sys.stderr)
+        return len(rows)
+
+
+def main() -> int:
+    base_profile = config.load_profile()
+    engine = get_engine()
+    dashboard_url = os.environ.get("DASHBOARD_URL")
+    with engine.begin() as conn:
+        owners = profile_mod.list_owners(conn)
+    exit_code = 0
+    for owner in owners:  # one person's failure (bad address, SMTP) never stops the others' digests
+        try:
+            digest_for(engine, owner, base_profile, dashboard_url)
+        except Exception as e:
+            print(f"::error::digest for {owner} failed: {type(e).__name__}: {e}", file=sys.stderr)
+            exit_code = 1
+    return exit_code
 
 
 if __name__ == "__main__":
