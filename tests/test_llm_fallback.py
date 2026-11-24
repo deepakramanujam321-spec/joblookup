@@ -26,6 +26,9 @@ def clean(monkeypatch):
 def fake_completion(calls, broken=()):
     """litellm.completion stand-in: models in `broken` raise, others answer."""
     def completion(model, **kw):
+        # LiteLLM's retry option needs the `tenacity` package, which the pipeline doesn't install; on the
+        # first real provider error it raises "tenacity import failed" and hides the actual error.
+        assert "num_retries" not in kw, "num_retries requires tenacity (not installed)"
         calls.append(model)
         if model in broken:
             raise broken[model]
@@ -105,3 +108,15 @@ def test_preferred_model_still_leads_and_single_provider_still_works(monkeypatch
     monkeypatch.setattr(litellm, "completion", fake_completion(calls))
     assert llm.call_tool("p", TOOL, model="gemini/gemini-2.5-pro")[1] == "gemini/gemini-2.5-pro"
     assert calls == ["gemini/gemini-2.5-pro"]
+
+
+def test_a_real_provider_error_is_reported_as_itself(monkeypatch):
+    """Through the real LiteLLM error path (not a stand-in): the failure that comes back must be the
+    provider's own, never an import error from the retry machinery."""
+    monkeypatch.setenv("OPENAI_API_KEY", "o")
+    real = litellm.completion
+    boom = litellm.RateLimitError("You exceeded your current quota", "openai", "gpt-4o-mini")
+    monkeypatch.setattr(litellm, "completion", lambda **kw: real(mock_response=boom, **kw))
+    with pytest.raises(llm.LLMError) as e:
+        llm.call_tool("p", TOOL)
+    assert "quota" in str(e.value).lower() and "tenacity" not in str(e.value).lower()

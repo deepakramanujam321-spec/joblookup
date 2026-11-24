@@ -102,8 +102,10 @@ def _complete(litellm, model: str, prompt: str, tool: dict, max_tokens: int) -> 
             {"role": "system", "content": UNTRUSTED_NOTICE},
             {"role": "user", "content": prompt},
         ],
+        # No num_retries: LiteLLM's retry wrapper imports `tenacity`, which isn't installed, and on the
+        # first real provider error it raises "tenacity import failed" instead -- hiding the actual
+        # error. A failure falls through to the next provider instead (see call_tool).
         timeout=60,
-        num_retries=1,  # one backoff retry for rate limits (Gemini's free tier has them)
     )
     return json.loads(resp.choices[0].message.tool_calls[0].function.arguments)
 
