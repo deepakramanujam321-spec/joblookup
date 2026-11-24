@@ -25,6 +25,7 @@
 - Render service joblookup-dashboard (free, Docker), health check `/api/health` reports not_configured / auth_failed / host_not_found / unreachable.
 - GitHub secrets in use: DATABASE_URL, BRAVE_API_KEY, OPENAI_API_KEY, GMAIL_ADDRESS/GMAIL_APP_PASSWORD (or SMTP_*), optional DASHBOARD_URL, LLM_MODEL.
 - Render env: DATABASE_URL, DASHBOARD_USERNAME, DASHBOARD_PASSWORD, OPENAI_API_KEY, TOKEN_ENCRYPTION_KEY (+ optional GOOGLE_* for Gmail/Drive OAuth).
+- More than one person (since 2026-11-24): each account (owner) has its own jobs, profile, resumes, scores and digest; they share the database, Render service and API keys. Extra logins go in Render's DASHBOARD_EXTRA_USERS (JSON). Each person is searched from their own profile; a job found for one reaches the other only if it is a strong match (src/jobseeker/sharing.py). Current second account: `priya` (game developer). AI providers fall back automatically (OPENAI_API_KEY, GEMINI_API_KEY, ...).
 - Claude's sandbox can't reach Supabase, Render, Drive or job boards directly; live checks go through GitHub Actions, the Supabase MCP, or me.
 
 ## Open items (as of 2026-10-09)
