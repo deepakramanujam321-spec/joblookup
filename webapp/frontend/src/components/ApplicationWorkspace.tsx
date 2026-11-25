@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDraftMutations, useDrafts, useIntegrations, useResumes, useTaskMutations, useUpdateApplication } from "../api/hooks";
 import type { Draft, JobDetail, WorkflowStatus } from "../api/types";
-import { absolute, STATUS_LABELS, title } from "../lib/format";
+import { absolute, inputToIso, shortDate, STATUS_LABELS, title } from "../lib/format";
 import { Badge, EmptyState, ErrorState, Skeleton, Spinner, Time, errorMessage, useConfirm, useToast } from "./ui";
 
 const STATUS_FLOW: WorkflowStatus[] = ["needs_review", "shortlisted", "draft_ready", "applied", "recruiter_response", "interview", "offer", "rejected", "withdrawn", "dismissed", "closed"];
@@ -43,7 +43,7 @@ function TrackingPanel({ detail }: { detail: JobDetail }) {
   };
   const save = () => update.mutate({
     notes: form.notes || null, application_url: form.application_url || null, recruiter_name: form.recruiter_name || null,
-    recruiter_contact: form.recruiter_contact || null, next_follow_up_at: form.next_follow_up_at ? new Date(`${form.next_follow_up_at}T09:00:00`).toISOString() : null,
+    recruiter_contact: form.recruiter_contact || null, next_follow_up_at: inputToIso(form.next_follow_up_at, "09:00:00"),
   }, { onSuccess: () => toast("Saved"), onError: (e) => toast(errorMessage(e), "error") });
 
   return (
@@ -82,7 +82,7 @@ function TasksPanel({ detail }: { detail: JobDetail }) {
   const m = useTaskMutations(detail.job.id);
   const toast = useToast();
   const [draft, setDraft] = useState({ kind: "interview", title: "", due: "" });
-  const add = () => m.create.mutate({ kind: draft.kind, title: draft.title, due_at: draft.due ? new Date(draft.due).toISOString() : null }, {
+  const add = () => m.create.mutate({ kind: draft.kind, title: draft.title, due_at: inputToIso(draft.due) }, {
     onSuccess: () => setDraft({ kind: "interview", title: "", due: "" }),
     onError: (e) => toast(errorMessage(e), "error"),
   });
@@ -191,7 +191,7 @@ function DraftsPanel({ detail }: { detail: JobDetail }) {
         <h3>Application draft</h3>
         {items.length > 0 && (
           <select className="select" style={{ width: "auto" }} aria-label="Version" value={current?.id} onChange={(e) => setSelectedId(Number(e.target.value))}>
-            {items.map((d) => <option key={d.id} value={d.id}>v{d.version} · {d.origin === "edited" ? "your edit" : d.origin === "legacy" ? "from digest" : "generated"} · {new Date(d.created_at).toLocaleDateString()}</option>)}
+            {items.map((d) => <option key={d.id} value={d.id}>v{d.version} · {d.origin === "edited" ? "your edit" : d.origin === "legacy" ? "from digest" : "generated"} · {shortDate(d.created_at)}</option>)}
           </select>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useOverview } from "./api/hooks";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DashboardPage } from "./pages/Dashboard";
 import { JobsPage } from "./pages/Jobs";
 import { ApplicationsPage } from "./pages/Applications";
@@ -44,6 +45,7 @@ function useTheme(): [Theme, (t: Theme) => void] {
 export function App() {
   const overview = useOverview();
   const [theme, setTheme] = useTheme();
+  const { pathname } = useLocation();
   return (
     <div className="shell">
       <nav className="sidebar" aria-label="Main">
@@ -67,17 +69,19 @@ export function App() {
         </div>
       </nav>
       <main className="main">
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/jobs" element={<JobsPage />} />
-          <Route path="/jobs/:jobId" element={<JobsPage />} />
-          <Route path="/applications" element={<ApplicationsPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/insights" element={<InsightsPage />} />
-          <Route path="/pipeline" element={<PipelinePage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <ErrorBoundary resetKey={pathname}>
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/jobs" element={<JobsPage />} />
+            <Route path="/jobs/:jobId" element={<JobsPage />} />
+            <Route path="/applications" element={<ApplicationsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/insights" element={<InsightsPage />} />
+            <Route path="/pipeline" element={<PipelinePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </ErrorBoundary>
       </main>
       <nav className="mobile-nav" aria-label="Main">
         {NAV.slice(0, 5).map((item) => (

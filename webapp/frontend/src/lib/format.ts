@@ -5,10 +5,27 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
+/** Epoch ms for any timestamp the API may send, or null. Never throws.
+ *  Also reads Postgres' text form ("2026-11-25 05:51:53.948132+00"), which
+ *  Safari/Firefox reject and Chrome only tolerates. */
+export function toMillis(value: unknown): number | null {
+  if (typeof value === "number") return Math.abs(value) <= 8.64e15 ? value : null; // JS Date range; also rejects NaN/Infinity
+  if (typeof value !== "string" || !value.trim()) return null;
+  const text = value.trim();
+  let t = Date.parse(text);
+  if (Number.isNaN(t)) {
+    const m = text.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)(?:\.(\d+))?\s*(Z|[+-]\d{2}(?::?\d{2})?)?$/i);
+    if (!m) return null;
+    const [, day, time, frac = "", zone = "Z"] = m;
+    const offset = zone.toUpperCase() === "Z" ? "Z" : zone.length === 3 ? `${zone}:00` : zone.length === 5 ? `${zone.slice(0, 3)}:${zone.slice(3)}` : zone;
+    t = Date.parse(`${day}T${time.length === 5 ? `${time}:00` : time}${frac ? `.${frac.slice(0, 3).padEnd(3, "0")}` : ""}${offset}`);
+  }
+  return Number.isNaN(t) ? null : t;
+}
+
 export function relative(iso: string | null | undefined, now: number = Date.now()): string | null {
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return null;
+  const t = toMillis(iso);
+  if (t === null) return null;
   const diff = now - t;
   const future = diff < 0;
   const abs = Math.abs(diff);
@@ -30,7 +47,32 @@ function plural(n: number, unit: string): string {
 
 export function absolute(iso: string | null | undefined): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const t = toMillis(iso);
+  if (t === null) return "Unknown date";
+  try {
+    return new Date(t).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return new Date(t).toISOString().slice(0, 16).replace("T", " ");
+  }
+}
+
+/** Calendar date only ("25 Nov 2026"); a placeholder when unparsable. */
+export function shortDate(iso: string | null | undefined): string {
+  const t = toMillis(iso);
+  if (t === null) return "—";
+  try {
+    return new Date(t).toLocaleDateString();
+  } catch {
+    return new Date(t).toISOString().slice(0, 10);
+  }
+}
+
+/** ISO string for an <input type=date|datetime-local> value, or null when
+ *  it isn't a real date (toISOString throws on an Invalid Date). */
+export function inputToIso(value: string, timeIfDateOnly = ""): string | null {
+  if (!value) return null;
+  const t = Date.parse(value.length === 10 && timeIfDateOnly ? `${value}T${timeIfDateOnly}` : value);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
 }
 
 export function postedLabel(iso: string | null | undefined): string {
@@ -99,7 +141,7 @@ export function salaryLabel(j: { salary_min: number | null; salary_max: number |
 export function listFreshness(j: { verification_status: string; last_verified_at: string | null; listing_quality: string }, staleDays = 14): string {
   if (j.listing_quality === "not_a_listing") return "not_a_listing";
   if (j.verification_status === "closed") return "closed";
-  if (j.verification_status === "active" && j.last_verified_at && Date.now() - Date.parse(j.last_verified_at) <= staleDays * DAY) return "verified";
+  if (j.verification_status === "active" && j.last_verified_at && Date.now() - (toMillis(j.last_verified_at) ?? 0) <= staleDays * DAY) return "verified";
   if (j.last_verified_at || j.verification_status === "verification_failed" || j.verification_status === "source_unavailable") return "possibly_stale";
   return "unchecked";
 }

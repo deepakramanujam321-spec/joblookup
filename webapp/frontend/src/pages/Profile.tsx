@@ -7,6 +7,10 @@ import { title } from "../lib/format";
 const SENIORITY = ["intern", "junior", "mid", "senior", "staff", "principal", "lead", "manager", "director"];
 const EMPLOYMENT = ["full_time", "contract", "part_time", "internship", "temporary"];
 
+// Profile data is plain JSON. (structuredClone is missing in Safari < 15.4 and
+// Chrome < 98, where calling it threw inside an effect and blanked the page.)
+const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+
 export function ProfilePage() {
   const profile = useProfile();
   const save = useSaveProfile();
@@ -17,7 +21,7 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (profile.data && profile.data.version !== loadedVersion.current) {
-      setData(structuredClone(profile.data.data));
+      setData(clone(profile.data.data));
       setAdditional(profile.data.additional_info ?? "");
       loadedVersion.current = profile.data.version;
     }
@@ -156,7 +160,7 @@ export function ProfilePage() {
           </div>
           <div className="sticky-save">
             {dirty && <span className="small muted grow">Unsaved changes</span>}
-            <button className="btn" disabled={!dirty} onClick={() => { setData(structuredClone(profile.data!.data)); setAdditional(profile.data!.additional_info ?? ""); }}>Discard</button>
+            <button className="btn" disabled={!dirty} onClick={() => { setData(clone(profile.data!.data)); setAdditional(profile.data!.additional_info ?? ""); }}>Discard</button>
             <button className="btn primary" disabled={!dirty || save.isPending} onClick={submit}>{save.isPending ? "Saving…" : "Save profile"}</button>
           </div>
         </div>
@@ -166,7 +170,7 @@ export function ProfilePage() {
           {data.evidence_sources.length > 0 && (
             <section className="card card-pad stack tight">
               <h3>Documents that informed this profile</h3>
-              <ul className="bullets small">{data.evidence_sources.map((s, i) => <li key={i}>{s.name}{s.version ? ` v${s.version}` : ""}: {s.sections.join(", ")} · <Time iso={s.applied_at} /></li>)}</ul>
+              <ul className="bullets small">{data.evidence_sources.map((s, i) => <li key={i}>{s.name}{s.version ? ` v${s.version}` : ""}: {(s.sections ?? []).join(", ")} · <Time iso={s.applied_at} /></li>)}</ul>
             </section>
           )}
         </div>
@@ -220,7 +224,7 @@ function Repeat<T>({ items, onChange, empty, render, addLabel = "Add" }: { items
           <div><button className="btn ghost sm danger" onClick={() => onChange(items.filter((_, j) => j !== i))}>Remove</button></div>
         </div>
       ))}
-      <div><button className="btn sm" onClick={() => onChange([...items, structuredClone(empty)])}>+ {addLabel}</button></div>
+      <div><button className="btn sm" onClick={() => onChange([...items, clone(empty)])}>+ {addLabel}</button></div>
     </div>
   );
 }
@@ -321,10 +325,10 @@ function ResumeHubPanel() {
       {last && (
         <div className="small">
           <span className="muted">Last sync <Time iso={last.synced_at} />: </span>
-          {last.imported.length} new · {last.updated.length} updated · {last.unchanged.length} unchanged
-          {last.default_set_to && <div>Default resume set to <strong>{last.default_set_to}</strong></div>}
-          {last.failed.length > 0 && <ul className="bullets" style={{ color: "var(--bad)" }}>{last.failed.map((f) => <li key={f}>{f}</li>)}</ul>}
-          {last.skipped.length > 0 && <div className="muted">Skipped: {last.skipped.join("; ")}</div>}
+          {(last.imported ?? []).length} new · {(last.updated ?? []).length} updated · {(last.unchanged ?? []).length} unchanged
+          {last.default_set_to && <div>Default resume set to <strong>{String(last.default_set_to)}</strong></div>}
+          {(last.failed ?? []).length > 0 && <ul className="bullets" style={{ color: "var(--bad)" }}>{(last.failed ?? []).map((f, i) => <li key={i}>{String(f)}</li>)}</ul>}
+          {(last.skipped ?? []).length > 0 && <div className="muted">Skipped: {(last.skipped ?? []).map(String).join("; ")}</div>}
         </div>
       )}
     </section>

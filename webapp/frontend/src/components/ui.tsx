@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "../api/client";
 import type { ExperienceFit } from "../api/types";
-import { absolute, relative, salaryLabel, scoreTone } from "../lib/format";
+import { absolute, relative, salaryLabel, scoreTone, toMillis } from "../lib/format";
 
 export function Score({ value, label }: { value: number | null | undefined; label?: string }) {
   const tone = scoreTone(value);
@@ -60,7 +60,8 @@ export function ExperienceBadge({ job }: { job: { match_highlights: { experience
 export function Time({ iso, prefix = "", fallback = "—" }: { iso: string | null | undefined; prefix?: string; fallback?: string }) {
   const rel = relative(iso);
   if (!rel || !iso) return <span className="muted">{fallback}</span>;
-  return <time dateTime={iso} title={absolute(iso)}>{prefix}{rel}</time>;
+  const ms = toMillis(iso);
+  return <time dateTime={ms === null ? undefined : new Date(ms).toISOString()} title={absolute(iso)}>{prefix}{rel}</time>;
 }
 
 export function Spinner({ label = "Loading" }: { label?: string }) {
