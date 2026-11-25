@@ -64,12 +64,12 @@ def recompute(conn: Connection, owner: str) -> list[dict]:
         learned_preferences.c.owner == owner,
         sa.tuple_(learned_preferences.c.dimension, learned_preferences.c.value).notin_(keys) if keys else sa.true(),
     ))
-    for r in rows:
-        values = {**r, "owner": owner, "updated_at": now}
-        values["active"] = r["active"] and not r["disabled_by_user"]
-        conn.execute(pg_insert(learned_preferences).values(**values).on_conflict_do_update(
+    if rows:  # one multi-row upsert, not one round trip per row
+        stmt = pg_insert(learned_preferences).values([
+            {**r, "owner": owner, "updated_at": now, "active": r["active"] and not r["disabled_by_user"]} for r in rows])
+        conn.execute(stmt.on_conflict_do_update(
             constraint="learned_preferences_key",
-            set_={k: values[k] for k in ("weight", "positive", "negative", "active", "explanation", "updated_at")},
+            set_={k: stmt.excluded[k] for k in ("weight", "positive", "negative", "active", "explanation", "updated_at")},
         ))
     rerank(conn, owner, record, resume)
     return rows

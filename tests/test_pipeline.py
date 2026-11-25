@@ -1,3 +1,5 @@
+import re
+
 import sqlalchemy as sa
 
 from jobseeker import llm, pipeline
@@ -116,3 +118,88 @@ def test_review_all_reads_jobs_the_cost_gate_skips(engine, make_job, monkeypatch
     monkeypatch.setattr(llm, "call_tool", fake_llm(calls))
     assert pipeline.score_pending(engine)["llm_calls"] == 0  # role gate skips it
     assert pipeline.score_pending(engine, review_all=True)["llm_calls"] == 1 and calls
+
+
+def _statements(engine, fn):
+    seen = []
+    def _record(conn, cursor, statement, *a, **kw):
+        seen.append(re.sub(r"\s+", " ", statement).strip())
+    sa.event.listen(engine, "before_cursor_execute", _record)
+    try:
+        return fn(), seen
+    finally:
+        sa.event.remove(engine, "before_cursor_execute", _record)
+
+
+def _rescore_state(conn, ids):
+    jobs_state = {r["id"]: {k: v for k, v in r.items() if k != "updated_at"} for r in conn.execute(
+        sa.select(jobs.c.id, jobs.c.fit_score, jobs.c.fit_rationale, jobs.c.match_highlights, jobs.c.scoring_version,
+                  jobs.c.priority_score, jobs.c.priority_explanation, jobs.c.updated_at).where(jobs.c.id.in_(ids))).mappings()}
+    assessments = sorted((r.job_id, r.input_hash, r.model, float(r.overall_score), None if r.llm_score is None else float(r.llm_score),
+                          r.components, r.strengths, r.gaps, r.rationale)
+                         for r in conn.execute(sa.select(job_assessments).where(job_assessments.c.job_id.in_(ids))))
+    return jobs_state, assessments
+
+
+def test_rescore_all_matches_the_per_job_path(engine, make_job, monkeypatch):
+    """rescore_all is now bulk (fixed number of round trips). It must give
+    exactly what looping assess_job gave: same scores, rationale, highlights,
+    explanation objects and assessment rows -- including carrying over an AI
+    read and reusing a cached assessment."""
+    from jobseeker import assessment, profile as profile_mod
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(llm, "call_tool", fake_llm([]))
+    ids = [make_job(url=f"https://jobs.lever.co/bulk/{i}", title=t) for i, t in enumerate(
+        ["Senior Backend Engineer", "AI Platform Engineer", "Customer Support Engineer", "Staff Backend Engineer"])]
+    ids.append(make_job(url="https://jobs.lever.co/bulk/sf", location="San Francisco, CA", remote_type="onsite"))
+    pipeline.score_pending(engine, llm_budget=2)  # some jobs have an AI read, others not
+    with engine.begin() as conn:
+        pipeline.rescore_all(conn)  # leaves cached assessments for the current inputs: next call hits the cache for them
+        conn.execute(sa.update(jobs).where(jobs.c.id == ids[1]).values(description="Rust and Go only. 2+ years of experience."))  # one cache miss
+
+    with engine.connect() as conn:
+        tx = conn.begin()
+        record = profile_mod.get_or_seed(conn, "default")
+        _, resume = profile_mod.default_resume_text(conn, "default")
+        learned = assessment.load_learned(conn, "default")
+        evidence = profile_mod.evidence_text(record["data"], resume)
+        for job in conn.execute(sa.select(jobs).where(jobs.c.owner == "default", jobs.c.listing_quality == "ok",
+                                                      jobs.c.fit_score.is_not(None))).mappings().all():
+            assessment.assess_job(conn, dict(job), "default", record, resume, evidence, None, False, learned)
+        expected = _rescore_state(conn, ids)
+        tx.rollback()
+
+    with engine.begin() as conn:
+        assert pipeline.rescore_all(conn) == len(ids)
+        actual = _rescore_state(conn, ids)
+        for kind in ("priority_explanation", "match_highlights"):  # JSON objects, not double-encoded strings
+            assert conn.execute(sa.text(f"select bool_and(jsonb_typeof({kind}) = 'object') from jobseeker.jobs where id = any(:ids)"),
+                                {"ids": ids}).scalar(), kind
+    assert actual == expected
+    assert any(h["match_highlights"]["semantic"] is False and h["fit_score"] is not None for h in actual[0].values())
+    assert any(a[4] is not None for a in actual[1])  # an AI read survived
+
+
+def test_rescore_all_round_trips_do_not_grow_with_job_count(engine, make_job):
+    """PUT /api/v2/profile re-scores every job synchronously. It used to run
+    ~5 statements per job, which over the pooler made a profile save take
+    tens of seconds. The statement count must be independent of job count."""
+    def rescore():
+        with engine.begin() as conn:
+            return pipeline.rescore_all(conn)
+
+    for i in range(3):
+        make_job(url=f"https://jobs.lever.co/rt/{i}", title="Backend Engineer", company=f"C{i}")
+    pipeline.score_pending(engine)
+    n_small, small = _statements(engine, rescore)
+    for i in range(3, 40):
+        make_job(url=f"https://jobs.lever.co/rt/{i}", title="Backend Engineer", company=f"C{i}")
+    pipeline.score_pending(engine)
+    n_large, large = _statements(engine, rescore)
+
+    assert (n_small, n_large) == (3, 40)
+    assert len(large) == len(small), (len(small), len(large))
+    assert len(large) <= 12, large
+    assert sum(bool(re.search(r"(?i)^update jobseeker\.jobs\b", st)) for st in large) == 1
+

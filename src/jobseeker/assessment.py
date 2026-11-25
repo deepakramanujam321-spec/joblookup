@@ -21,6 +21,7 @@ import sys
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Connection
 
@@ -210,22 +211,13 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
             conn.execute(row.on_conflict_do_update(  # replaces a row left by a failed attempt before this fix
                 constraint="job_assessments_cache_key", set_={c: row.excluded[c] for c in refreshed}))
 
-    highlights = {
-        "matched_skills": result["components"]["skills"]["matches"][:6],
-        "gaps": result["gaps"][:3],
-        "confidence": result.get("confidence"),
+    highlights = build_highlights(
+        job, profile, result, scoring_inputs(profile_record["version"], resume_text),
         # True only when the AI read reflects *current* inputs (fresh call, or
         # a cache hit on the full input hash). A carried-over read from an
         # older resume/profile counts as False, so the pipeline refreshes it.
-        "semantic": llm_called or (bool(cached) and run_llm and cached["llm_score"] is not None),
-        "salary": salary_status(job, result["components"]["compensation"]),
-        "experience": matching.experience_gap(job, profile),
-        # Excluded company / deal-breaker phrase / experience gap: hard-filtered
-        # from every browsing view, not just scored down. Salary is never part
-        # of this -- it stays visible with just the badge above.
-        "excluded": matching.hard_exclude(job, profile),
-        "inputs": scoring_inputs(profile_record["version"], resume_text),
-    }
+        semantic=llm_called or (bool(cached) and run_llm and cached["llm_score"] is not None),
+    )
     conn.execute(
         sa.update(jobs).where(jobs.c.id == job["id"]).values(
             fit_score=result["overall_score"], fit_rationale=result["rationale"], match_highlights=highlights,
@@ -235,6 +227,23 @@ def assess_job(conn: Connection, job: dict, owner: str, profile_record: dict, re
     candidate_skills = matching.candidate_skill_set(profile, resume_text)
     persist_priority(conn, job, result["overall_score"], profile, candidate_skills, learned, now)
     return {"assessment": result, "draft": draft, "llm_called": llm_called, "cached": bool(cached), "llm_error": llm_error}
+
+
+def build_highlights(job: dict, profile: dict, result: dict, inputs: dict, semantic: bool) -> dict:
+    """The `jobs.match_highlights` payload for a freshly assessed job."""
+    return {
+        "matched_skills": result["components"]["skills"]["matches"][:6],
+        "gaps": result["gaps"][:3],
+        "confidence": result.get("confidence"),
+        "semantic": semantic,
+        "salary": salary_status(job, result["components"]["compensation"]),
+        "experience": matching.experience_gap(job, profile),
+        # Excluded company / deal-breaker phrase / experience gap: hard-filtered
+        # from every browsing view, not just scored down. Salary is never part
+        # of this -- it stays visible with just the badge above.
+        "excluded": matching.hard_exclude(job, profile),
+        "inputs": inputs,
+    }
 
 
 def scoring_inputs(profile_version: int, resume_text: str) -> dict:
@@ -259,24 +268,124 @@ def salary_status(job: dict, compensation: dict) -> str:
     return "stated"
 
 
-def previous_semantic(conn: Connection, job_id: int, owner: str) -> dict | None:
-    """The most recent AI read of this job, reused when re-scoring without
-    a model call (profile edits, feedback re-ranks, exhausted budget) so a
-    deterministic re-score never silently discards it. Labelled as reused."""
-    row = conn.execute(
-        sa.select(job_assessments.c.id, job_assessments.c.llm_score, job_assessments.c.components,
-                  job_assessments.c.rationale, job_assessments.c.model, job_assessments.c.profile_version)
-        .where(job_assessments.c.job_id == job_id, job_assessments.c.owner == owner, job_assessments.c.llm_score.is_not(None))
-        .order_by(job_assessments.c.created_at.desc()).limit(1)
-    ).first()
-    if row is None:
-        return None
+_PREVIOUS_COLUMNS = (job_assessments.c.id, job_assessments.c.job_id, job_assessments.c.llm_score, job_assessments.c.components,
+                     job_assessments.c.rationale, job_assessments.c.model, job_assessments.c.profile_version)
+
+
+def _reused_semantic(row) -> dict:
     sem = (row.components or {}).get("semantic") or {}
     return {
         "score": float(row.llm_score), "rationale": sem.get("detail") or row.rationale or "",
         "strengths": sem.get("matches") or [], "gaps": sem.get("gaps") or [], "model": row.model,
         "key": f"reuse:{row.id}", "reused_from_profile_version": row.profile_version,
     }
+
+
+def previous_semantic(conn: Connection, job_id: int, owner: str) -> dict | None:
+    """The most recent AI read of this job, reused when re-scoring without
+    a model call (profile edits, feedback re-ranks, exhausted budget) so a
+    deterministic re-score never silently discards it. Labelled as reused."""
+    row = conn.execute(
+        sa.select(*_PREVIOUS_COLUMNS)
+        .where(job_assessments.c.job_id == job_id, job_assessments.c.owner == owner, job_assessments.c.llm_score.is_not(None))
+        .order_by(job_assessments.c.created_at.desc()).limit(1)
+    ).first()
+    return None if row is None else _reused_semantic(row)
+
+
+# Rows per statement for the bulk paths below: keeps each statement well under
+# the driver's 65535 bind-parameter limit however many jobs a person has.
+BULK_CHUNK = 500
+
+
+def _chunks(items: list, size: int = BULK_CHUNK):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+
+def previous_semantics(conn: Connection, job_ids: list[int], owner: str) -> dict[int, dict]:
+    """`previous_semantic` for many jobs in one query per chunk."""
+    out: dict[int, dict] = {}
+    for chunk in _chunks(job_ids):
+        rows = conn.execute(
+            sa.select(*_PREVIOUS_COLUMNS)
+            .where(job_assessments.c.job_id.in_(chunk), job_assessments.c.owner == owner, job_assessments.c.llm_score.is_not(None))
+            .distinct(job_assessments.c.job_id)
+            .order_by(job_assessments.c.job_id, job_assessments.c.created_at.desc(), job_assessments.c.id.desc())
+        )
+        out.update({r.job_id: _reused_semantic(r) for r in rows})
+    return out
+
+
+def _case_by_job(updates: list[dict], column: str, jsonb: bool = False):
+    # type_coerce (not json.dumps) for JSONB: the bind processor already
+    # serializes, so dumping first would store a JSON string, not an object.
+    return sa.case(*((jobs.c.id == u["id"], sa.type_coerce(u[column], JSONB) if jsonb else u[column]) for u in updates))
+
+
+def rescore_jobs(conn: Connection, jobs_to_score: list[dict], owner: str, profile_record: dict, resume_text: str,
+                 learned: list[dict], now: datetime | None = None) -> int:
+    """`assess_job(..., model=None, allow_llm=False)` for many jobs with a
+    fixed number of round trips instead of ~5 per job: read what's needed
+    (previous AI reads, cached assessments) for all jobs at once, compute
+    everything in Python, then write new assessments and the job rows in
+    bulk. Same results as looping assess_job. Over the pooler from Render a
+    profile save that re-scored hundreds of jobs one at a time took tens of
+    seconds."""
+    if not jobs_to_score:
+        return 0
+    now = now or datetime.now(timezone.utc)
+    profile, version = profile_record["data"], profile_record["version"]
+    ids = [j["id"] for j in jobs_to_score]
+    previous = previous_semantics(conn, ids, owner)
+    keys = {j["id"]: input_hash(j, version, resume_text, (previous.get(j["id"]) or {}).get("key")) for j in jobs_to_score}
+    cached: dict[tuple[int, str], dict] = {}
+    for chunk in _chunks(ids):
+        for row in conn.execute(sa.select(job_assessments).where(
+                job_assessments.c.owner == owner, job_assessments.c.job_id.in_(chunk),
+                job_assessments.c.input_hash.in_({keys[i] for i in chunk}))).mappings():
+            cached[(row["job_id"], row["input_hash"])] = dict(row)
+
+    candidate_skills = matching.candidate_skill_set(profile, resume_text)
+    inputs = scoring_inputs(version, resume_text)
+    new_assessments: list[dict] = []
+    updates: list[dict] = []
+    for job in jobs_to_score:
+        hit = cached.get((job["id"], keys[job["id"]]))
+        if hit:
+            result = {"overall_score": float(hit["overall_score"]), "components": hit["components"],
+                      "strengths": hit["strengths"], "gaps": hit["gaps"], "rationale": hit["rationale"]}
+        else:
+            semantic = previous.get(job["id"])
+            result = matching.assess(job, profile, resume_text, semantic)
+            result["rationale"] = (semantic or {}).get("rationale") or _deterministic_rationale(result)
+            new_assessments.append({
+                "job_id": job["id"], "owner": owner, "scoring_version": matching.SCORING_VERSION, "profile_version": version,
+                "input_hash": keys[job["id"]], "model": (semantic or {}).get("model"), "overall_score": result["overall_score"],
+                "llm_score": (semantic or {}).get("score"), "components": result["components"], "strengths": result["strengths"],
+                "gaps": result["gaps"], "rationale": result["rationale"],
+            })
+        priority_score, explanation = compute_priority(job, result["overall_score"], profile, candidate_skills, learned, now)
+        updates.append({
+            "id": job["id"], "fit_score": result["overall_score"], "fit_rationale": result["rationale"],
+            "match_highlights": build_highlights(job, profile, result, inputs, semantic=False),
+            "priority_score": priority_score, "priority_explanation": explanation,
+        })
+
+    refreshed = ("model", "overall_score", "llm_score", "components", "strengths", "gaps", "rationale")
+    for chunk in _chunks(new_assessments):
+        stmt = pg_insert(job_assessments).values(chunk)
+        conn.execute(stmt.on_conflict_do_update(  # same upsert as assess_job; (job, owner, hash) is unique per job here
+            constraint="job_assessments_cache_key", set_={c: stmt.excluded[c] for c in refreshed}))
+    for chunk in _chunks(updates):
+        # One CASE per column, one UPDATE per chunk.
+        conn.execute(sa.update(jobs).where(jobs.c.id.in_([u["id"] for u in chunk])).values(
+            fit_score=_case_by_job(chunk, "fit_score"), fit_rationale=_case_by_job(chunk, "fit_rationale"),
+            match_highlights=_case_by_job(chunk, "match_highlights", jsonb=True),
+            priority_score=_case_by_job(chunk, "priority_score"),
+            priority_explanation=_case_by_job(chunk, "priority_explanation", jsonb=True),
+            scoring_version=matching.SCORING_VERSION, updated_at=now))
+    return len(jobs_to_score)
 
 
 def _deterministic_rationale(result: dict) -> str:

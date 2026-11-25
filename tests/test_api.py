@@ -350,6 +350,49 @@ def test_rerank_writes_every_job_in_one_round_trip(client, make_job, engine):
     assert all(s.priority_score is not None and s.priority_explanation for s in scores)
 
 
+def test_recompute_upserts_learned_preferences_in_one_statement(client, make_job, engine):
+    """recompute used to INSERT ... ON CONFLICT once per learned row (a round
+    trip each over the pooler). It's one multi-row upsert now, and re-running
+    it updates rows in place without touching the user's own on/off choice."""
+    from jobseeker import preferences
+    from jobseeker.database import learned_preferences
+
+    for i in range(4):
+        job_id = make_job(url=f"https://jobs.lever.co/learn/{i}", title="Staff Backend Engineer", company=f"L{i}")
+        assert client.post(f"/api/v2/jobs/{job_id}/feedback", json={"category": "excellent_match"}).status_code == 201
+
+    def stored(conn):
+        return {(r.dimension, r.value): r for r in conn.execute(sa.select(learned_preferences))}
+
+    with engine.begin() as conn:
+        before = stored(conn)
+        assert len(before) > 1
+        key = next(iter(before))
+        conn.execute(sa.update(learned_preferences).where(learned_preferences.c.dimension == key[0], learned_preferences.c.value == key[1])
+                     .values(disabled_by_user=True, active=False, weight=0))
+
+    inserts = []
+    def _count(conn, cursor, statement, *a, **kw):
+        if re.search(r"(?i)\binsert\s+into\s+jobseeker\.learned_preferences\b", statement):
+            inserts.append(statement)
+    sa.event.listen(engine, "before_cursor_execute", _count)
+    try:
+        with engine.begin() as conn:
+            rows = preferences.recompute(conn, "default")
+    finally:
+        sa.event.remove(engine, "before_cursor_execute", _count)
+
+    assert len(rows) == len(before) and len(inserts) == 1, inserts
+    with engine.begin() as conn:
+        after = stored(conn)
+    assert set(after) == set(before)
+    assert after[key].disabled_by_user is True and after[key].active is False  # user's choice survives the upsert
+    assert after[key].id == before[key].id  # updated in place, not re-created
+    for k, row in after.items():
+        if k != key:
+            assert (row.weight, row.positive, row.negative, row.explanation) == (before[k].weight, before[k].positive, before[k].negative, before[k].explanation)
+
+
 def test_double_clicked_feedback_counts_as_one_signal(client, make_job):
     """Two identical submissions of the same feedback on one job (a double
     click on a slow server) once crossed the two-signal threshold by

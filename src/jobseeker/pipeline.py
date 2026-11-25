@@ -123,10 +123,6 @@ def rescore_all(conn, owner: str = profile_mod.DEFAULT_OWNER) -> int:
     record = profile_mod.get_or_seed(conn, owner)
     _, resume = profile_mod.default_resume_text(conn, owner)
     learned = assessment.load_learned(conn, owner)
-    evidence = profile_mod.evidence_text(record["data"], resume)
-    count = 0
-    for job in conn.execute(sa.select(jobs).where(
-            jobs.c.owner == owner, jobs.c.listing_quality == "ok", jobs.c.fit_score.is_not(None))).mappings().all():
-        assessment.assess_job(conn, dict(job), owner, record, resume, evidence, None, False, learned)
-        count += 1
-    return count
+    scored = [dict(job) for job in conn.execute(sa.select(jobs).where(
+        jobs.c.owner == owner, jobs.c.listing_quality == "ok", jobs.c.fit_score.is_not(None))).mappings()]
+    return assessment.rescore_jobs(conn, scored, owner, record, resume, learned)
