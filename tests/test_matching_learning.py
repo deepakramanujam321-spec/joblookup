@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from jobseeker import learning, lifecycle, matching, priority
+from jobseeker import assessment, learning, lifecycle, matching, priority
 from jobseeker.profile import parse_location_label
 
 PROFILE = {
@@ -38,6 +38,27 @@ def test_location_preferences_parse():
 ])
 def test_location_rank_scores(location, remote, expected):
     assert matching.score_location(job(location=location, remote_type=remote), PROFILE).score == expected
+
+
+@pytest.mark.parametrize("location,remote", [
+    ("Istanbul, Turkey", "onsite"), ("Warsaw, Poland", "onsite"), ("Warsaw, Poland", "hybrid"), ("Istanbul, Turkey", None),
+    ("Remote - Poland", "remote"), ("Remote - Europe", "remote"),
+])
+def test_far_away_jobs_are_a_location_mismatch_and_skip_the_ai_read(location, remote):
+    """A fresh grad who accepts Bengaluru/Hyderabad (on-site or hybrid), Remote
+    India and Remote global: Turkey/Poland on-site (or remote restricted to
+    Europe) is outside every preference -- score 15, not "compatible", so no
+    paid AI read. Location is a weighted component, not a blocker: such a job
+    is down-ranked, not hidden (see matching.assess)."""
+    profile = {**PROFILE, "locations": [parse_location_label(l).model_dump() for l in [
+        "Bengaluru (on-site/hybrid)", "Remote (India)", "Hyderabad (on-site/hybrid)", "Remote (global)"]]}
+    j = job(location=location, remote_type=remote)
+    component = matching.score_location(j, profile)
+    assert component.score == 15 and "outside your location preferences" in component.detail
+    assert matching.location_compatible(j, profile) is False
+    assert assessment.should_run_semantic(j, profile, matching.assess(j, profile, ""), review_all=False) is False
+    assert assessment.should_run_semantic(j, profile, matching.assess(j, profile, ""), review_all=True) is True
+
 
 
 def test_unknowns_are_not_negative():
