@@ -49,7 +49,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          MAX_LLM_CALLS_PER_RUN: "60"
+          # Per person per run (a ceiling, not typical use: unchanged jobs are cached).
+          # gpt-4o-mini is ~$0.001/call, so worst case is ~$0.25/person/run.
+          MAX_LLM_CALLS_PER_RUN: "250"
 
       - name: Re-check listings are still open
         if: always()
